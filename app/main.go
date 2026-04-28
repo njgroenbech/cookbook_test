@@ -10,7 +10,10 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	_ "modernc.org/sqlite"
 )
 
@@ -69,12 +72,75 @@ type RecipeImage struct {
 	Image string `json:"image"`
 }
 
+// Prometheus metrics
+var (
+	httpRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "http_requests_total",
+			Help: "Total number of HTTP requests",
+		},
+		[]string{"method", "path", "status"},
+	)
+	httpRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "http_request_duration_seconds",
+			Help:    "HTTP request duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "path"},
+	)
+	dbQueryDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "db_query_duration_seconds",
+			Help:    "Database query duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"query_type"},
+	)
+)
+
+func init() {
+	// Register Prometheus metrics
+	prometheus.MustRegister(httpRequestsTotal)
+	prometheus.MustRegister(httpRequestDuration)
+	prometheus.MustRegister(dbQueryDuration)
+}
+
 // Global variables
 var (
 	db           *sql.DB
 	templates    *template.Template
 	databasePath = "./demo.db"
 )
+
+// prometheusMiddleware wraps HTTP handlers to record metrics
+func prometheusMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		
+		// Create a custom response writer to capture status code
+		srw := &statusResponseWriter{ResponseWriter: w}
+		
+		// Call the next handler
+		next.ServeHTTP(srw, r)
+		
+		// Record metrics
+		duration := time.Since(start).Seconds()
+		httpRequestDuration.WithLabelValues(r.Method, r.URL.Path).Observe(duration)
+		httpRequestsTotal.WithLabelValues(r.Method, r.URL.Path, strconv.Itoa(srw.statusCode)).Inc()
+	})
+}
+
+// statusResponseWriter captures the HTTP status code
+type statusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *statusResponseWriter) WriteHeader(code int) {
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
 
 func main() {
 	var err error
@@ -101,14 +167,20 @@ func main() {
 	// Set up static file server
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	// Set up Prometheus metrics endpoint
+	http.Handle("/metrics", promhttp.Handler())
+
+	// Create a mux to apply middleware to API routes
+	apiMux := http.NewServeMux()
+
 	// Set up routes
-	http.HandleFunc("/", homeHandler)
-	http.HandleFunc("/recipes/", recipeDetailHandler)
-	http.HandleFunc("/api", apiOverviewHandler)
-	http.HandleFunc("/api/user/create/", userCreateHandler)
-	http.HandleFunc("/api/user/me/", userMeHandler)
-	http.HandleFunc("/api/user/token/", userTokenHandler)
-	http.HandleFunc("/api/recipe/recipes/", func(w http.ResponseWriter, r *http.Request) {
+	apiMux.HandleFunc("/", homeHandler)
+	apiMux.HandleFunc("/recipes/", recipeDetailHandler)
+	apiMux.HandleFunc("/api", apiOverviewHandler)
+	apiMux.HandleFunc("/api/user/create/", userCreateHandler)
+	apiMux.HandleFunc("/api/user/me/", userMeHandler)
+	apiMux.HandleFunc("/api/user/token/", userTokenHandler)
+	apiMux.HandleFunc("/api/recipe/recipes/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			recipeRecipesHandler(w, r)
 		} else if r.Method == http.MethodPost {
@@ -117,11 +189,11 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	http.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
-	http.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
+	apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
+	apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
 
 	// Serve the raw OpenAPI spec
-	http.HandleFunc("/swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
+	apiMux.HandleFunc("/swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		yamlFile, err := os.ReadFile("api-schema.yaml")
 		if err != nil {
 			http.Error(w, "Could not find api-schema.yaml", 500)
@@ -132,7 +204,7 @@ func main() {
 	})
 
 	// Swagger UI
-	http.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
+	apiMux.HandleFunc("/swagger", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		fmt.Fprint(w, `<!DOCTYPE html>
 <html>
@@ -156,6 +228,9 @@ func main() {
 </body>
 </html>`)
 	})
+
+	// Apply middleware to all routes
+	http.Handle("/", prometheusMiddleware(apiMux))
 
 	// Start server
 	fmt.Println("Server starting on :3000...")
