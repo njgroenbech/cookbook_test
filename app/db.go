@@ -13,7 +13,9 @@ var db *sql.DB
 // It runs the schema DDL statements and seeds the database when empty.
 func initDB() {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("init").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("init").Observe(time.Since(start).Seconds())
+    }()
 
     schema := `
     CREATE TABLE IF NOT EXISTS users (
@@ -78,7 +80,9 @@ func initDB() {
 // seedDatabase inserts initial sample data into the database.
 func seedDatabase() {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("seed").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("seed").Observe(time.Since(start).Seconds())
+    }()
 
     log.Printf("Seeding database with sample data...")
 
@@ -206,7 +210,9 @@ func seedDatabase() {
 // addRecipeIngredient adds an ingredient association for a recipe.
 func addRecipeIngredient(recipeID int, ingredientID int, amount, unit string) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("insert_recipe_ingredient").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("insert_recipe_ingredient").Observe(time.Since(start).Seconds())
+    }()
 
     _, err := db.Exec(
         "INSERT INTO recipe_ingredients (recipe_id, ingredient_id, amount, unit) VALUES ($1, $2, $3, $4)",
@@ -220,7 +226,9 @@ func addRecipeIngredient(recipeID int, ingredientID int, amount, unit string) {
 // addRecipeTag associates a tag with a recipe.
 func addRecipeTag(recipeID int, tagID int) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("insert_recipe_tag").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("insert_recipe_tag").Observe(time.Since(start).Seconds())
+    }()
 
     _, err := db.Exec(
         "INSERT INTO recipe_tags (recipe_id, tag_id) VALUES ($1, $2)",
@@ -234,7 +242,9 @@ func addRecipeTag(recipeID int, tagID int) {
 // getAllRecipesSimple retrieves lightweight recipe entries.
 func getAllRecipesSimple() ([]RecipeSimple, error) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("select_all_simple").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("select_all_simple").Observe(time.Since(start).Seconds())
+    }()
 
     rows, err := db.Query("SELECT id, title, time_minutes, price, link FROM recipes")
     if err != nil {
@@ -263,7 +273,9 @@ func getAllRecipesSimple() ([]RecipeSimple, error) {
 // getAllRecipes retrieves full recipes including ingredients and tags.
 func getAllRecipes() ([]Recipe, error) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("select_all").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("select_all").Observe(time.Since(start).Seconds())
+    }()
 
     rows, err := db.Query("SELECT id, title, time_minutes, price, link, description FROM recipes")
     if err != nil {
@@ -297,7 +309,9 @@ func getAllRecipes() ([]Recipe, error) {
 // getRecipeByID retrieves a recipe by its ID including ingredients and tags.
 func getRecipeByID(id int) (*Recipe, error) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("select_by_id").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("select_by_id").Observe(time.Since(start).Seconds())
+    }()
 
     var recipe Recipe
     err := db.QueryRow("SELECT id, title, time_minutes, price, link, description FROM recipes WHERE id = $1", id).
@@ -322,7 +336,9 @@ func getRecipeByID(id int) (*Recipe, error) {
 // getIngredientsForRecipe returns ingredients associated with a recipe.
 func getIngredientsForRecipe(recipeID int) ([]Ingredient, error) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("select_ingredients").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("select_ingredients").Observe(time.Since(start).Seconds())
+    }()
 
     rows, err := db.Query(`
         SELECT i.id, i.name, ri.amount, ri.unit 
@@ -349,7 +365,9 @@ func getIngredientsForRecipe(recipeID int) ([]Ingredient, error) {
 // getTagsForRecipe returns tags associated with a recipe.
 func getTagsForRecipe(recipeID int) ([]Tag, error) {
     start := time.Now()
-    defer dbQueryDuration.WithLabelValues("select_tags").Observe(time.Since(start).Seconds())
+    defer func() {
+        dbQueryDuration.WithLabelValues("select_tags").Observe(time.Since(start).Seconds())
+    }()
 
     rows, err := db.Query(`
         SELECT t.id, t.name 
