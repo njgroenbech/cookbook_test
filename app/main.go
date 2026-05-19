@@ -14,7 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	_ "modernc.org/sqlite"
+	_ "github.com/lib/pq"
 )
 
 // Database structure
@@ -145,10 +145,10 @@ func (w *statusResponseWriter) WriteHeader(code int) {
 func main() {
 	var err error
 
-	// Initialize database
-	db, err = sql.Open("sqlite", databasePath)
+	// Initialize database using connectDB()
+	db, err = connectDB()
 	if err != nil {
-		log.Fatal("Failed to open database:", err)
+		log.Fatal("Failed to connect to database:", err)
 	}
 	defer db.Close()
 
@@ -240,14 +240,14 @@ func main() {
 func initDB() {
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id SERIAL PRIMARY KEY,
 		email TEXT NOT NULL UNIQUE,
 		password TEXT NOT NULL,
 		name TEXT NOT NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS recipes (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id SERIAL PRIMARY KEY,
 		title TEXT NOT NULL,
 		time_minutes INTEGER NOT NULL,
 		price TEXT NOT NULL,
@@ -257,12 +257,12 @@ func initDB() {
 	);
 
 	CREATE TABLE IF NOT EXISTS ingredients (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id SERIAL PRIMARY KEY,
 		name TEXT NOT NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS tags (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		id SERIAL PRIMARY KEY,
 		name TEXT NOT NULL
 	);
 
@@ -311,7 +311,7 @@ func seedDatabase() {
 	}
 
 	for _, ing := range ingredients {
-		_, err := db.Exec("INSERT INTO ingredients (name) VALUES (?)", ing)
+		_, err := db.Exec("INSERT INTO ingredients (name) VALUES ($1)", ing)
 		if err != nil {
 			log.Printf("Failed to insert ingredient %s: %v", ing, err)
 		}
@@ -320,7 +320,7 @@ func seedDatabase() {
 	// Insert tags
 	tags := []string{"Italian", "Quick", "Dinner", "Vegetarian", "Healthy", "Seafood"}
 	for _, tag := range tags {
-		_, err := db.Exec("INSERT INTO tags (name) VALUES (?)", tag)
+		_, err := db.Exec("INSERT INTO tags (name) VALUES ($1)", tag)
 		if err != nil {
 			log.Printf("Failed to insert tag %s: %v", tag, err)
 		}
@@ -365,16 +365,15 @@ func seedDatabase() {
 	}
 
 	for _, recipe := range recipes {
-		result, err := db.Exec(
-			"INSERT INTO recipes (title, time_minutes, price, link, description) VALUES (?, ?, ?, ?, ?)",
+		var recipeID int
+		err := db.QueryRow(
+			"INSERT INTO recipes (title, time_minutes, price, link, description) VALUES ($1, $2, $3, $4, $5) RETURNING id",
 			recipe.title, recipe.timeMinutes, recipe.price, recipe.link, recipe.description,
-		)
+		).Scan(&recipeID)
 		if err != nil {
 			log.Printf("Failed to insert recipe %s: %v", recipe.title, err)
 			continue
 		}
-
-		recipeID, _ := result.LastInsertId()
 
 		// Add recipe ingredients and tags based on recipe type
 		switch recipe.title {
@@ -428,9 +427,9 @@ func seedDatabase() {
 	}
 }
 
-func addRecipeIngredient(recipeID int64, ingredientID int, amount, unit string) {
+func addRecipeIngredient(recipeID int, ingredientID int, amount, unit string) {
 	_, err := db.Exec(
-		"INSERT INTO recipe_ingredients (recipe_id, ingredient_id, amount, unit) VALUES (?, ?, ?, ?)",
+		"INSERT INTO recipe_ingredients (recipe_id, ingredient_id, amount, unit) VALUES ($1, $2, $3, $4)",
 		recipeID, ingredientID, amount, unit,
 	)
 	if err != nil {
@@ -438,9 +437,9 @@ func addRecipeIngredient(recipeID int64, ingredientID int, amount, unit string) 
 	}
 }
 
-func addRecipeTag(recipeID int64, tagID int) {
+func addRecipeTag(recipeID int, tagID int) {
 	_, err := db.Exec(
-		"INSERT INTO recipe_tags (recipe_id, tag_id) VALUES (?, ?)",
+		"INSERT INTO recipe_tags (recipe_id, tag_id) VALUES ($1, $2)",
 		recipeID, tagID,
 	)
 	if err != nil {
@@ -556,7 +555,7 @@ func userCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Insert user into database
 	_, err = db.Exec(
-		"INSERT INTO users (email, password, name) VALUES (?, ?, ?)",
+		"INSERT INTO users (email, password, name) VALUES ($1, $2, $3)",
 		userReq.Email, userReq.Password, userReq.Name,
 	)
 	if err != nil {
@@ -699,20 +698,19 @@ func recipeRecipesCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert recipe into database
-	result, err := db.Exec(
-		"INSERT INTO recipes (title, time_minutes, price, link, description) VALUES (?, ?, ?, ?, ?)",
+	var recipeID int
+	err = db.QueryRow(
+		"INSERT INTO recipes (title, time_minutes, price, link, description) VALUES ($1, $2, $3, $4, $5) RETURNING id",
 		recipeReq.Title, recipeReq.TimeMinutes, recipeReq.Price, recipeReq.Link, recipeReq.Description,
-	)
+	).Scan(&recipeID)
 	if err != nil {
 		http.Error(w, "Failed to create recipe", http.StatusInternalServerError)
 		return
 	}
 
-	recipeID, _ := result.LastInsertId()
-
 	// Return the created recipe
 	recipe := Recipe{
-		ID:          int(recipeID),
+		ID:          recipeID,
 		Title:       recipeReq.Title,
 		TimeMinutes: recipeReq.TimeMinutes,
 		Price:       recipeReq.Price,
@@ -852,7 +850,7 @@ func getAllRecipes() ([]Recipe, error) {
 
 func getRecipeByID(id int) (*Recipe, error) {
 	var recipe Recipe
-	err := db.QueryRow("SELECT id, title, time_minutes, price, link, description FROM recipes WHERE id = ?", id).
+	err := db.QueryRow("SELECT id, title, time_minutes, price, link, description FROM recipes WHERE id = $1", id).
 		Scan(&recipe.ID, &recipe.Title, &recipe.TimeMinutes, &recipe.Price, &recipe.Link, &recipe.Description)
 	if err != nil {
 		return nil, err
@@ -878,7 +876,7 @@ func getIngredientsForRecipe(recipeID int) ([]Ingredient, error) {
 		SELECT i.id, i.name, ri.amount, ri.unit 
 		FROM ingredients i 
 		JOIN recipe_ingredients ri ON i.id = ri.ingredient_id 
-		WHERE ri.recipe_id = ?`, recipeID)
+		WHERE ri.recipe_id = $1`, recipeID)
 	if err != nil {
 		return nil, err
 	}
@@ -901,7 +899,7 @@ func getTagsForRecipe(recipeID int) ([]Tag, error) {
 		SELECT t.id, t.name 
 		FROM tags t 
 		JOIN recipe_tags rt ON t.id = rt.tag_id 
-		WHERE rt.recipe_id = ?`, recipeID)
+		WHERE rt.recipe_id = $1`, recipeID)
 	if err != nil {
 		return nil, err
 	}

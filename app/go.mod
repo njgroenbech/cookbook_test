@@ -3,8 +3,8 @@ module hello/app
 go 1.24.0
 
 require (
+	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.23.2
-	modernc.org/sqlite v1.46.1
 )
 
 require (
