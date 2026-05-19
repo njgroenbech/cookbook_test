@@ -20,6 +20,9 @@ jobs:
       - name: Run go vet 
         run: cd app && go vet ./... # kører "go vet" som kun bliver succes hvis den ikke finder fejl
 
+      - name: Run go tests
+        run: cd app && go test ./...
+
   hadolint:
     name: Lint Dockerfiles
     needs: lint_go  # Wait for lint-go to finish
