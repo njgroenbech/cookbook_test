@@ -56,7 +56,6 @@ jobs:
           host: ${{ secrets.SSH_HOST_BACKEND }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.AZURE_KEY }}
-          debug: true
           script: |
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
             cd ~/legacyProject
