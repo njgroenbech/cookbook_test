@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Configuration variables - CUSTOMIZE THESE
-RESOURCE_GROUP="recipe-cookbook-rg"
+RESOURCE_GROUP="recipe-cookbook-backup"
 LOCATION="norwayeast"  # Change to your preferred region (e.g., "eastus", "northeurope")
 NGINX_VM_NAME="recipe-cookbook-nginx-vm"
 BACKEND_VM_NAME="recipe-cookbook-backend-vm"
@@ -42,11 +42,17 @@ SSH_KEY_PATH="$HOME/.ssh/azure_key.pub"   # Change this path to point at your pu
 VNET_NAME="recipe-cookbook-vnet"
 SUBNET_NAME="recipe-cookbook-subnet"
 
-# Disable all color output
-GREEN=''
-YELLOW=''
-RED=''
-NC=''
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+if [ "$NO_COLORS" = true ]; then
+    GREEN=''
+    YELLOW=''
+    RED=''
+    NC=''
+fi
 
 echo "=========================================="
 echo "Enhanced Azure VM Setup for Recipe Cookbook"
@@ -101,9 +107,8 @@ if az group exists --name "$RESOURCE_GROUP" | grep -q "true"; then
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Deleting existing resource group..."
-        az group delete --name "$RESOURCE_GROUP" --yes --no-wait
-        echo "Waiting for deletion to complete..."
-        sleep 10
+        az group delete --name "$RESOURCE_GROUP" --yes
+        echo "Resource group deleted."
     else
         echo "Using existing resource group"
     fi
@@ -178,7 +183,7 @@ az vm create \
     --ssh-key-values "$SSH_KEY_PATH" \
     --vnet-name "$VNET_NAME" \
     --subnet "$SUBNET_NAME" \
-    --public-ip-sku Standard \
+    --public-ip-address "" \
     --output table
 
 echo -e "${GREEN}✅ backend VM created${NC}"
@@ -241,56 +246,76 @@ BACKEND_PRIVATE_IP=$(az vm show \
     --output tsv)
 
 echo ""
-echo "nginx VM  — Public IP : ${GREEN}$NGINX_PUBLIC_IP${NC}"
-echo "backend VM — Public IP : ${GREEN}$BACKEND_PUBLIC_IP${NC}"
-echo "backend VM — Private IP: ${GREEN}$BACKEND_PRIVATE_IP${NC}"
+echo -e "nginx VM  — Public IP : ${GREEN}$NGINX_PUBLIC_IP${NC}"
+echo    "backend VM — Public IP : (none — internal only)"
+echo -e "backend VM — Private IP: ${GREEN}$BACKEND_PRIVATE_IP${NC}"
 echo ""
 echo "nginx will proxy to backend via private IP: $BACKEND_PRIVATE_IP:8080"
 
 # Wait for VMs to be fully ready
 echo ""
-echo "Waiting for VMs to be fully ready..."
+echo "Waiting for VMs to reach provisioned state..."
+az vm wait --resource-group "$RESOURCE_GROUP" --name "$NGINX_VM_NAME" --created
+az vm wait --resource-group "$RESOURCE_GROUP" --name "$BACKEND_VM_NAME" --created
+echo "VMs provisioned. Waiting for SSH to become available..."
 sleep 30
 
 # Helper function to set up a single VM
 setup_vm() {
     local VM_IP="$1"
     local VM_LABEL="$2"
+    local JUMP="${3:-}"
+    local SSH_KEY="${SSH_KEY_PATH%.pub}"
+    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY")
+    if [ -n "$JUMP" ]; then
+        # ProxyCommand (not -J) so StrictHostKeyChecking=no applies to the jump host too
+        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+    fi
 
     echo ""
     echo "=========================================="
     echo "Connecting to $VM_LABEL VM and updating system"
     echo "=========================================="
 
-    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 "$ADMIN_USERNAME@$VM_IP" "
-        set -e
-        echo 'Connected to VM, starting system update...'
+    local attempt=0
+    while [ $attempt -lt 3 ]; do
+        attempt=$((attempt + 1))
+        if ssh "${SSH_OPTS[@]}" "$ADMIN_USERNAME@$VM_IP" "
+            set -e
+            echo 'Connected to VM, starting system update...'
 
-        echo 'Updating package lists...'
-        sudo apt update -y
+            echo 'Updating package lists...'
+            sudo apt update -y
 
-        echo 'Upgrading installed packages...'
-        sudo apt upgrade -y
+            echo 'Upgrading installed packages...'
+            sudo apt upgrade -y
 
-        echo 'Installing basic utilities...'#!/bin/bash
-sudo apt install -y curl wget git unzip
+            echo 'Installing basic utilities...'
+            sudo apt install -y curl wget git unzip
 
-        echo 'Cleaning up...'
-        sudo apt autoremove -y
-        sudo apt autoclean
+            echo 'Cleaning up...'
+            sudo apt autoremove -y
+            sudo apt autoclean
 
-        echo 'System update and upgrade complete!'
-        echo 'VM is ready for Docker installation.'
-    "; then
-        echo -e "${GREEN}✅ $VM_LABEL VM system update completed successfully${NC}"
-    else
-        echo -e "${YELLOW}⚠️  SSH connection to $VM_LABEL VM failed. VM may still be initializing.${NC}"
-        exit 1
-    fi
+            echo 'System update and upgrade complete!'
+            echo 'VM is ready for Docker installation.'
+        "; then
+            echo -e "${GREEN}✅ $VM_LABEL VM system update completed successfully${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}⚠️  SSH connection to $VM_LABEL VM failed (attempt $attempt/3).${NC}"
+            if [ $attempt -lt 3 ]; then
+                echo "Retrying in 20s..."
+                sleep 20
+            fi
+        fi
+    done
+    echo -e "${RED}❌ Failed to connect to $VM_LABEL VM after 3 attempts.${NC}"
+    exit 1
 }
 
 setup_vm "$NGINX_PUBLIC_IP" "nginx"
-setup_vm "$BACKEND_PUBLIC_IP" "backend"
+setup_vm "$BACKEND_PRIVATE_IP" "backend" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
 # Install Docker on both VMs
 echo ""
@@ -301,13 +326,19 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
     install_docker() {
         local VM_IP="$1"
         local VM_LABEL="$2"
+        local JUMP="${3:-}"
+        local SSH_KEY="${SSH_KEY_PATH%.pub}"
+        local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY")
+        if [ -n "$JUMP" ]; then
+            SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+        fi
 
         echo ""
         echo "=========================================="
         echo "Installing Docker on $VM_LABEL VM"
         echo "=========================================="
 
-        ssh -o StrictHostKeyChecking=no "$ADMIN_USERNAME@$VM_IP" << 'ENDSSH'
+        ssh "${SSH_OPTS[@]}" "$ADMIN_USERNAME@$VM_IP" << 'ENDSSH'
             set -e
             echo "Updating package index..."
             sudo apt update
@@ -333,6 +364,7 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
             sudo ufw allow 22/tcp
             sudo ufw allow 80/tcp
             sudo ufw allow 443/tcp
+            sudo ufw allow 8080/tcp
 
             echo "Creating app directory..."
             mkdir -p ~/app
@@ -346,7 +378,7 @@ ENDSSH
     }
 
     install_docker "$NGINX_PUBLIC_IP" "nginx"
-    install_docker "$BACKEND_PUBLIC_IP" "backend"
+    install_docker "$BACKEND_PRIVATE_IP" "backend" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
     echo -e "${YELLOW}⚠️  Note: You need to logout and login again for docker group changes to take effect${NC}"
 fi
@@ -367,9 +399,9 @@ if ! command -v gh &> /dev/null; then
     echo "2. Add these secrets:"
     echo "   VM_USER              = $ADMIN_USERNAME"
     echo "   SSH_HOST_NGINX        = $NGINX_PUBLIC_IP"
-    echo "   SSH_HOST_BACKEND      = $BACKEND_PUBLIC_IP"
+    echo "   SSH_HOST_BACKEND      = $BACKEND_PRIVATE_IP (access via nginx jump host)"
     echo "   BACKEND_PRIVATE_IP    = $BACKEND_PRIVATE_IP"
-    echo "   SSH_AZURE_KEY       = Contents of ~/.ssh/$SSH_KEY_PATH"
+    echo "   SSH_AZURE_KEY       = Contents of ${SSH_KEY_PATH%.pub}"
     echo ""
     echo "3. Or install GitHub CLI and run this script from your repository directory"
 else
@@ -381,9 +413,9 @@ else
 
     echo "Setting GitHub secrets..."
 
-    echo "$ADMIN_USERNAME"    | gh secret set SSH_USER
+    echo "$ADMIN_USERNAME"     | gh secret set SSH_USER
     echo "$NGINX_PUBLIC_IP"   | gh secret set SSH_HOST_NGINX
-    echo "$BACKEND_PUBLIC_IP" | gh secret set SSH_HOST_BACKEND
+    echo "$BACKEND_PRIVATE_IP" | gh secret set SSH_HOST_BACKEND
     echo "$BACKEND_PRIVATE_IP" | gh secret set BACKEND_PRIVATE_IP
     gh secret set SSH_PRIVATE_KEY < "${SSH_KEY_PATH%.pub}"
 
@@ -396,28 +428,28 @@ echo "=========================================="
 echo "Setup Complete!"
 echo "=========================================="
 echo ""
-echo "Resource Group : ${GREEN}$RESOURCE_GROUP${NC}"
-echo "VNet           : ${GREEN}$VNET_NAME${NC}"
+echo -e "Resource Group : ${GREEN}$RESOURCE_GROUP${NC}"
+echo -e "VNet           : ${GREEN}$VNET_NAME${NC}"
 echo ""
 echo "nginx VM"
-echo "  Name       : ${GREEN}$NGINX_VM_NAME${NC}"
-echo "  Public IP  : ${GREEN}$NGINX_PUBLIC_IP${NC}"
-echo "  Ports open : 22, 80, 443"
+echo -e "  Name       : ${GREEN}$NGINX_VM_NAME${NC}"
+echo -e "  Public IP  : ${GREEN}$NGINX_PUBLIC_IP${NC}"
+echo    "  Ports open : 22, 80, 443"
 echo ""
 echo "backend VM"
-echo "  Name        : ${GREEN}$BACKEND_VM_NAME${NC}"
-echo "  Public IP   : ${GREEN}$BACKEND_PUBLIC_IP${NC}"
-echo "  Private IP  : ${GREEN}$BACKEND_PRIVATE_IP${NC}"
-echo "  Ports open  : 22 (public), 8080 (VNet only)"
+echo -e "  Name        : ${GREEN}$BACKEND_VM_NAME${NC}"
+echo    "  Public IP   : (none — internal only)"
+echo -e "  Private IP  : ${GREEN}$BACKEND_PRIVATE_IP${NC}"
+echo    "  Ports open  : 22 (public), 8080 (VNet only)"
 echo ""
 echo "=========================================="
 echo "GitHub Secrets set:"
 echo "=========================================="
 echo "  SSH_USER           = $ADMIN_USERNAME"
 echo "  SSH_HOST_NGINX     = $NGINX_PUBLIC_IP"
-echo "  SSH_HOST_BACKEND   = $BACKEND_PUBLIC_IP"
+echo "  SSH_HOST_BACKEND   = $BACKEND_PRIVATE_IP"
 echo "  BACKEND_PRIVATE_IP = $BACKEND_PRIVATE_IP"
-echo "  SSH_PRIVATE_KEY    = (from ~/.ssh/id_rsa)"
+echo "  SSH_PRIVATE_KEY    = (from ${SSH_KEY_PATH%.pub})"
 echo ""
 echo "=========================================="
 echo "Next Steps:"
@@ -431,12 +463,12 @@ echo "   - backend image  → backend VM  (SSH_HOST_BACKEND)"
 echo "   - nginx image    → nginx VM    (SSH_HOST_NGINX)"
 echo ""
 echo "3. SSH to your VMs:"
-echo "   ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}    (nginx)"
-echo "   ${YELLOW}ssh $ADMIN_USERNAME@$BACKEND_PUBLIC_IP${NC}  (backend)"
+echo -e "   ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}    (nginx)"
+echo -e "   ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$BACKEND_PRIVATE_IP${NC}  (backend via jump)"
 echo ""
 echo "=========================================="
 echo ""
 echo "To delete everything later, run:"
-echo "   ${RED}./azure-teardown.sh${NC}"
+echo -e "   ${RED}./azure-teardown.sh${NC}"
 echo ""
 

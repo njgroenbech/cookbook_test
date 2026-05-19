@@ -6,7 +6,7 @@
 set -e  # Exit on any error
 
 # Configuration - MUST MATCH azure-setup.sh
-RESOURCE_GROUP="recipe-cookbook-rg"
+RESOURCE_GROUP="recipe-cookbook-backup"
 
 # Check if terminal supports ANSI colors
 if [ -t 1 ]; then
