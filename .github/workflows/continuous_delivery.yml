@@ -2,6 +2,8 @@ name: Build, Push to GHCR, and Deploy
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 jobs:
   test:
@@ -19,6 +21,7 @@ jobs:
 
   build-and-push:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,6 +59,7 @@ jobs:
 
   deploy:
     needs: build-and-push
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to app VM
