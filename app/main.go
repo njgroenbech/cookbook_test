@@ -128,6 +128,11 @@ func main() {
     apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
 
+    apiMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte("ok"))
+    })
+
     // Serve the raw OpenAPI spec
     apiMux.HandleFunc("/swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
         yamlFile, err := os.ReadFile("api-schema.yaml")
