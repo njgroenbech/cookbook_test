@@ -2,10 +2,10 @@
 
 # Full-Stack Azure Deployment Script (SHTF Recovery)
 # Creates four VMs in a shared VNet:
-#   - nginx VM       : public-facing, ports 80/443 open
-#   - app VM         : internal, port 3000 accessible within VNet only
-#   - postgres VM    : internal, port 5432 accessible from app VM only
-#   - monitoring VM  : internal, ports 9090/3001 accessible within VNet only
+#   - nginx VM       : public-facing, ports 22/80/443 open
+#   - app VM         : port 22 public, port 3000 accessible within VNet only
+#   - postgres VM    : private only, port 5432 accessible from app VM only (SSH via app VM jump)
+#   - monitoring VM  : private only, ports 9090/3001 accessible within VNet only (SSH via app VM jump)
 # Deploys the full application stack on each VM and sets all GitHub secrets.
 #
 # Usage: ./azure-setup.sh [--no-colors]
@@ -252,7 +252,7 @@ echo -e "${GREEN}✅ nginx VM created${NC}"
 
 echo ""
 echo "=========================================="
-echo "Creating app VM (internal)"
+echo "Creating app VM"
 echo "=========================================="
 echo "VM Name: $APP_VM_NAME"
 echo "Size: $VM_SIZE"
@@ -268,14 +268,14 @@ az vm create \
     --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
     --vnet-name "$VNET_NAME" \
     --subnet "$SUBNET_NAME" \
-    --public-ip-address "" \
+    --public-ip-sku Standard \
     --output table
 
 echo -e "${GREEN}✅ app VM created${NC}"
 
 echo ""
 echo "=========================================="
-echo "Creating postgres VM (internal)"
+echo "Creating postgres VM"
 echo "=========================================="
 echo "VM Name: $POSTGRES_VM_NAME"
 echo "Size: $VM_SIZE"
@@ -482,6 +482,13 @@ NGINX_PUBLIC_IP=$(az vm show \
     --query publicIps \
     --output tsv)
 
+APP_PUBLIC_IP=$(az vm show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$APP_VM_NAME" \
+    --show-details \
+    --query publicIps \
+    --output tsv)
+
 POSTGRES_PRIVATE_IP=$(az vm show \
     --resource-group "$RESOURCE_GROUP" \
     --name "$POSTGRES_VM_NAME" \
@@ -498,11 +505,11 @@ MONITORING_PRIVATE_IP=$(az vm show \
 
 echo ""
 echo -e "nginx VM      — Public IP  : ${GREEN}$NGINX_PUBLIC_IP${NC}"
-echo    "app VM        — Public IP  : (none — internal only)"
+echo -e "app VM        — Public IP  : ${GREEN}$APP_PUBLIC_IP${NC}"
 echo -e "app VM        — Private IP : ${GREEN}$APP_PRIVATE_IP${NC}"
-echo    "postgres VM   — Public IP  : (none — internal only)"
+echo    "postgres VM   — Public IP  : (none — SSH via app VM jump)"
 echo -e "postgres VM   — Private IP : ${GREEN}$POSTGRES_PRIVATE_IP${NC}"
-echo    "monitoring VM — Public IP  : (none — internal only)"
+echo    "monitoring VM — Public IP  : (none — SSH via app VM jump)"
 echo -e "monitoring VM — Private IP : ${GREEN}$MONITORING_PRIVATE_IP${NC}"
 echo ""
 echo "nginx   → app        : $APP_PRIVATE_IP:3000"
@@ -532,9 +539,9 @@ setup_vm() {
     local JUMP="${3:-}"
     local SSH_KEY="${SSH_KEY_PATH%.pub}"
     # Host keys are unknown for freshly created VMs; strict checking is disabled intentionally.
-    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY")
+    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY")
     if [ -n "$JUMP" ]; then
-        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
     fi
 
     echo ""
@@ -569,10 +576,10 @@ setup_vm() {
     exit 1
 }
 
-setup_vm "$NGINX_PUBLIC_IP" "nginx"
-setup_vm "$APP_PRIVATE_IP" "app" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-setup_vm "$POSTGRES_PRIVATE_IP" "postgres" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-setup_vm "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+setup_vm "$NGINX_PUBLIC_IP"      "nginx"
+setup_vm "$APP_PUBLIC_IP"        "app"
+setup_vm "$POSTGRES_PRIVATE_IP"  "postgres" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+setup_vm "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
 
 # ==========================================
 # Install Docker on all VMs
@@ -585,9 +592,9 @@ install_docker() {
     local JUMP="${4:-}"
     local SSH_KEY="${SSH_KEY_PATH%.pub}"
     # Host keys are unknown for freshly created VMs; strict checking is disabled intentionally.
-    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY")
+    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY")
     if [ -n "$JUMP" ]; then
-        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
     fi
 
     # Compute the ports this VM role needs open (expanded locally into the heredoc).
@@ -643,10 +650,10 @@ ENDSSH
     echo -e "${GREEN}✅ Docker installed on $VM_LABEL VM${NC}"
 }
 
-install_docker "$NGINX_PUBLIC_IP"     "nginx"      "nginx"
-install_docker "$APP_PRIVATE_IP"      "app"        "app"        "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-install_docker "$POSTGRES_PRIVATE_IP" "postgres"   "postgres"   "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-install_docker "$MONITORING_PRIVATE_IP" "monitoring" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+install_docker "$NGINX_PUBLIC_IP"      "nginx"      "nginx"
+install_docker "$APP_PUBLIC_IP"        "app"        "app"
+install_docker "$POSTGRES_PRIVATE_IP"  "postgres"   "postgres"  "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+install_docker "$MONITORING_PRIVATE_IP" "monitoring" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
 
 echo -e "${YELLOW}⚠️  Note: docker group changes require re-login; all docker commands below use sudo${NC}"
 
@@ -659,9 +666,9 @@ clone_repo() {
     local VM_LABEL="$2"
     local JUMP="${3:-}"
     local SSH_KEY="${SSH_KEY_PATH%.pub}"
-    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY")
+    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY")
     if [ -n "$JUMP" ]; then
-        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
     fi
 
     echo ""
@@ -680,10 +687,10 @@ clone_repo() {
     echo -e "${GREEN}✅ Repo cloned on $VM_LABEL VM${NC}"
 }
 
-clone_repo "$NGINX_PUBLIC_IP" "nginx"
-clone_repo "$APP_PRIVATE_IP" "app" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-clone_repo "$POSTGRES_PRIVATE_IP" "postgres" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
-clone_repo "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+clone_repo "$NGINX_PUBLIC_IP"      "nginx"
+clone_repo "$APP_PUBLIC_IP"        "app"
+clone_repo "$POSTGRES_PRIVATE_IP"  "postgres"   "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+clone_repo "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
 
 # ==========================================
 # Deploy postgres VM
@@ -696,8 +703,8 @@ echo "=========================================="
 
 SSH_KEY="${SSH_KEY_PATH%.pub}"
 
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
     "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/database
@@ -708,8 +715,11 @@ POSTGRES_PASSWORD=$DB_PASSWORD
 POSTGRES_DB=$DB_NAME
 ENVEOF
 
+echo "Removing any existing containers..."
+sudo docker compose down --remove-orphans 2>/dev/null || true
+
 echo "Starting PostgreSQL container..."
-sudo docker compose up -d
+sudo docker compose up -d --force-recreate
 echo "PostgreSQL container started."
 ENDSSH
 
@@ -725,8 +735,8 @@ MAX_ATTEMPTS=30
 ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
-    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$SSH_KEY" \
-        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+    if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
+        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
         "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" \
         "sudo docker exec recipe_app_postgres pg_isready -U $DB_USER -d $DB_NAME" 2>/dev/null; then
         echo -e "${GREEN}✅ PostgreSQL is ready${NC}"
@@ -749,9 +759,8 @@ echo "=========================================="
 echo "Deploying Backend"
 echo "=========================================="
 
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
-    "$ADMIN_USERNAME@$APP_PRIVATE_IP" << ENDSSH
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
+    "$ADMIN_USERNAME@$APP_PUBLIC_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/app
 
@@ -770,8 +779,11 @@ echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u github-token --password-stdin
 echo "Pulling app image..."
 sudo docker compose pull
 
+echo "Removing any existing containers..."
+sudo docker compose down --remove-orphans 2>/dev/null || true
+
 echo "Starting app container..."
-sudo docker compose up -d
+sudo docker compose up -d --force-recreate
 echo "Backend container started."
 ENDSSH
 
@@ -787,9 +799,8 @@ MAX_ATTEMPTS=18
 ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
-    APP_READY_STATUS=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$SSH_KEY" \
-        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
-        "$ADMIN_USERNAME@$APP_PRIVATE_IP" \
+    APP_READY_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
+        "$ADMIN_USERNAME@$APP_PUBLIC_IP" \
         "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/" 2>/dev/null || echo "000")
     APP_READY_STATUS="${APP_READY_STATUS:-000}"
     if [[ "$APP_READY_STATUS" =~ ^[23] ]]; then
@@ -814,7 +825,7 @@ echo "Deploying nginx"
 echo "=========================================="
 
 # Outer heredoc is unquoted (ENDSSH) so $APP_PRIVATE_IP and $REMOTE_APP_DIR expand here.
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY" \
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
     "$ADMIN_USERNAME@$NGINX_PUBLIC_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/network
@@ -826,9 +837,13 @@ ENVEOF
 echo "Authenticating to GHCR..."
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u github-token --password-stdin
 
+echo "Removing any existing containers and stale images..."
+sudo docker ps -aq | xargs -r sudo docker rm -f 2>/dev/null || true
+sudo docker rmi legacyproject-nginx legacyproject-nginx:latest 2>/dev/null || true
+
 echo "Pulling and starting nginx container..."
 sudo docker compose pull
-sudo docker compose up -d
+sudo docker compose up -d --force-recreate
 echo "nginx container started."
 ENDSSH
 
@@ -843,8 +858,8 @@ echo "=========================================="
 echo "Deploying Monitoring (Prometheus + Grafana)"
 echo "=========================================="
 
-ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
     "$ADMIN_USERNAME@$MONITORING_PRIVATE_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/monitoring
@@ -853,11 +868,24 @@ cat > .env << ENVEOF
 GF_SECURITY_ADMIN_PASSWORD=$GRAFANA_PASSWORD
 ENVEOF
 
+cat > prometheus.yml << PROMEOF
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "ultimate-bravery-cookbook"
+    static_configs:
+      - targets: ["$APP_PRIVATE_IP:3000"]
+PROMEOF
+
+echo "Removing any existing containers..."
+sudo docker compose down --remove-orphans 2>/dev/null || true
+
 echo "Authenticating to GHCR..."
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u github-token --password-stdin
 
 echo "Starting monitoring containers..."
-sudo docker compose up -d
+sudo docker compose up -d --force-recreate
 echo "Monitoring containers started."
 ENDSSH
 
@@ -874,8 +902,8 @@ echo "=========================================="
 
 # 1. Postgres
 echo -n "PostgreSQL reachable... "
-if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
     "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" \
     "sudo docker exec recipe_app_postgres pg_isready -U $DB_USER -d $DB_NAME" 2>/dev/null; then
     echo -e "${GREEN}✅ OK${NC}"
@@ -885,9 +913,8 @@ fi
 
 # 2. Backend (curl from within the app VM so we don't need cross-VM routing for the check)
 echo -n "Backend responding (2xx/3xx)... "
-APP_STATUS=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
-    "$ADMIN_USERNAME@$APP_PRIVATE_IP" \
+APP_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
+    "$ADMIN_USERNAME@$APP_PUBLIC_IP" \
     "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/"; true)
 APP_STATUS="${APP_STATUS:-000}"
 if [[ "$APP_STATUS" =~ ^[23] ]]; then
@@ -922,17 +949,18 @@ if ! command -v gh &> /dev/null; then
     echo ""
     echo "Set these secrets manually in repository Settings > Secrets and variables > Actions:"
     echo ""
-    echo "  VM_USER            = $ADMIN_USERNAME"
-    echo "  SSH_HOST_NGINX     = $NGINX_PUBLIC_IP"
-    echo "  SSH_HOST_APP       = $APP_PRIVATE_IP"
-    echo "  SSH_PROXY_HOST     = $NGINX_PUBLIC_IP"
-    echo "  AZURE_KEY          = (contents of ${SSH_KEY_PATH%.pub})"
-    echo "  SSH_HOST_POSTGRES  = $POSTGRES_PRIVATE_IP"
-    echo "  DB_HOST            = $POSTGRES_PRIVATE_IP"
-    echo "  DB_USER            = $DB_USER"
-    echo "  DB_PASSWORD        = (generated randomly — re-run the script to provision new credentials)"
-    echo "  DB_NAME            = $DB_NAME"
-    echo "  GRAFANA_PASSWORD   = (generated randomly — re-run the script to provision new credentials)"
+    echo "  VM_USER               = $ADMIN_USERNAME"
+    echo "  SSH_HOST_NGINX        = $NGINX_PUBLIC_IP"
+    echo "  SSH_HOST_APP          = $APP_PUBLIC_IP"
+    echo "  SSH_HOST_POSTGRES     = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_APP)"
+    echo "  SSH_HOST_MONITORING   = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_APP)"
+    echo "  SSH_PROXY_HOST        = $NGINX_PUBLIC_IP"
+    echo "  AZURE_KEY             = (contents of ${SSH_KEY_PATH%.pub})"
+    echo "  DB_HOST               = $POSTGRES_PRIVATE_IP"
+    echo "  DB_USER               = $DB_USER"
+    echo "  DB_PASSWORD           = (generated randomly — re-run the script to provision new credentials)"
+    echo "  DB_NAME               = $DB_NAME"
+    echo "  GRAFANA_PASSWORD      = (generated randomly — re-run the script to provision new credentials)"
     echo ""
 else
     if ! gh auth status &> /dev/null; then
@@ -942,18 +970,18 @@ else
 
     echo "Setting GitHub secrets..."
 
-    echo "$ADMIN_USERNAME"      | gh secret set VM_USER
-    echo "$NGINX_PUBLIC_IP"     | gh secret set SSH_HOST_NGINX
-    echo "$APP_PRIVATE_IP"      | gh secret set SSH_HOST_APP
-    echo "$NGINX_PUBLIC_IP"     | gh secret set SSH_PROXY_HOST
+    echo "$ADMIN_USERNAME"       | gh secret set VM_USER
+    echo "$NGINX_PUBLIC_IP"      | gh secret set SSH_HOST_NGINX
+    echo "$APP_PUBLIC_IP"        | gh secret set SSH_HOST_APP
+    echo "$POSTGRES_PRIVATE_IP"  | gh secret set SSH_HOST_POSTGRES
+    echo "$MONITORING_PRIVATE_IP" | gh secret set SSH_HOST_MONITORING
+    echo "$NGINX_PUBLIC_IP"      | gh secret set SSH_PROXY_HOST
     gh secret set AZURE_KEY < "${SSH_KEY_PATH%.pub}"
-    # Stored for recovery only — used when re-provisioning a single VM without a full teardown.
-    echo "$POSTGRES_PRIVATE_IP" | gh secret set SSH_HOST_POSTGRES
-    echo "$POSTGRES_PRIVATE_IP" | gh secret set DB_HOST
-    echo "$DB_USER"             | gh secret set DB_USER
-    echo "$DB_PASSWORD"         | gh secret set DB_PASSWORD
-    echo "$DB_NAME"             | gh secret set DB_NAME
-    echo "$GRAFANA_PASSWORD"    | gh secret set GRAFANA_PASSWORD
+    echo "$POSTGRES_PRIVATE_IP"  | gh secret set DB_HOST
+    echo "$DB_USER"              | gh secret set DB_USER
+    echo "$DB_PASSWORD"          | gh secret set DB_PASSWORD
+    echo "$DB_NAME"              | gh secret set DB_NAME
+    echo "$GRAFANA_PASSWORD"     | gh secret set GRAFANA_PASSWORD
 
     echo -e "${GREEN}✅ GitHub secrets set successfully${NC}"
 fi
@@ -977,30 +1005,32 @@ echo    "  Ports open : 22, 80, 443"
 echo ""
 echo "app VM"
 echo -e "  Name        : ${GREEN}$APP_VM_NAME${NC}"
-echo    "  Public IP   : (none — internal only)"
+echo -e "  Public IP   : ${GREEN}$APP_PUBLIC_IP${NC}"
 echo -e "  Private IP  : ${GREEN}$APP_PRIVATE_IP${NC}"
 echo    "  Ports open  : 22 (public), 3000 (VNet only)"
 echo ""
 echo "postgres VM"
 echo -e "  Name        : ${GREEN}$POSTGRES_VM_NAME${NC}"
-echo    "  Public IP   : (none — internal only)"
+echo    "  Public IP   : (none — SSH via app VM jump)"
 echo -e "  Private IP  : ${GREEN}$POSTGRES_PRIVATE_IP${NC}"
-echo    "  Ports open  : 22 (public), 5432 (app VM only)"
+echo    "  Ports open  : 22 (VNet only), 5432 (app VM only)"
 echo ""
 echo "monitoring VM"
 echo -e "  Name        : ${GREEN}$MONITORING_VM_NAME${NC}"
-echo    "  Public IP   : (none — internal only)"
+echo    "  Public IP   : (none — SSH via app VM jump)"
 echo -e "  Private IP  : ${GREEN}$MONITORING_PRIVATE_IP${NC}"
-echo    "  Ports open  : 22 (public), 9090/3001 (VNet only)"
+echo    "  Ports open  : 22 (VNet only), 9090/3001 (VNet only)"
 echo ""
 echo "=========================================="
 echo "GitHub Secrets:"
 echo "=========================================="
-echo "  VM_USER            = $ADMIN_USERNAME"
-echo "  SSH_HOST_NGINX     = $NGINX_PUBLIC_IP"
-echo "  SSH_HOST_APP       = $APP_PRIVATE_IP"
-echo "  SSH_PROXY_HOST     = $NGINX_PUBLIC_IP"
-echo "  AZURE_KEY          = (from ${SSH_KEY_PATH%.pub})"
+echo "  VM_USER             = $ADMIN_USERNAME"
+echo "  SSH_HOST_NGINX      = $NGINX_PUBLIC_IP"
+echo "  SSH_HOST_APP        = $APP_PUBLIC_IP"
+echo "  SSH_HOST_POSTGRES   = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_APP)"
+echo "  SSH_HOST_MONITORING = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_APP)"
+echo "  SSH_PROXY_HOST      = $NGINX_PUBLIC_IP"
+echo "  AZURE_KEY           = (from ${SSH_KEY_PATH%.pub})"
 echo ""
 echo "=========================================="
 echo "App is live at:"
@@ -1009,13 +1039,14 @@ echo ""
 echo -e "  ${GREEN}http://$NGINX_PUBLIC_IP/${NC}"
 echo ""
 echo "SSH access:"
-echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}   (nginx)"
-echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$APP_PRIVATE_IP${NC}   (app via jump)"
-echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$POSTGRES_PRIVATE_IP${NC}  (postgres via jump)"
-echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC} (monitoring via jump)"
+echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}                                                       (nginx)"
+echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}                                                          (app)"
+echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$POSTGRES_PRIVATE_IP${NC}    (postgres via app jump)"
+echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC}  (monitoring via app jump)"
 echo ""
-echo "Grafana:"
-echo -e "  ${YELLOW}http://$MONITORING_PRIVATE_IP:3001/${NC}  (accessible from within VNet; SSH tunnel to reach it)"
+echo "Grafana (SSH tunnel to access from your machine):"
+echo -e "  ${YELLOW}ssh -L 3001:$MONITORING_PRIVATE_IP:3001 $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}"
+echo    "  Then open: http://localhost:3001/"
 echo ""
 echo "=========================================="
 echo ""
