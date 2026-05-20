@@ -1,0 +1,8 @@
+services:
+  nginx:
+    image: ghcr.io/dendanskemetode/legacyproject-nginx:latest
+    ports:
+      - "80:80"
+    environment:
+      - APP_HOST=${APP_HOST}
+    restart: unless-stopped

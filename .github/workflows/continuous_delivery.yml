@@ -37,7 +37,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push Docker image
+      - name: Build and push app image
         uses: docker/build-push-action@v5
         with:
           context: ./app
@@ -45,21 +45,32 @@ jobs:
           tags: |
             ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
             ghcr.io/dendanskemetode/legacyproject:latest
+      - name: Build and push nginx image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./network
+          push: true
+          tags: |
+            ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
+            ghcr.io/dendanskemetode/legacyproject-nginx:latest
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to backend VM
+      - name: Deploy to app VM
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST_BACKEND }}
+          host: ${{ secrets.SSH_HOST_APP }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.AZURE_KEY }}
+          proxy_host: ${{ secrets.SSH_PROXY_HOST }}
+          proxy_username: ${{ secrets.VM_USER }}
+          proxy_key: ${{ secrets.AZURE_KEY }}
           script: |
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
-            cd ~/legacyProject
-            sudo git pull
+            cd ~/legacyProject/app
+            git pull
             sudo docker compose pull
             sudo docker compose up -d --force-recreate
 
@@ -71,7 +82,7 @@ jobs:
           key: ${{ secrets.AZURE_KEY }}
           script: |
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
-            cd ~/legacyProject
-            sudo git pull
+            cd ~/legacyProject/network
+            git pull
             sudo docker compose pull
             sudo docker compose up -d --force-recreate

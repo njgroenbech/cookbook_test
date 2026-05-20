@@ -1,10 +1,9 @@
 upstream app {
-    server go_app:3000;
+    server ${APP_HOST}:3000;
 }
 
 server {
     listen 80;
-
     location / {
         proxy_pass         http://app;
         proxy_http_version 1.1;
