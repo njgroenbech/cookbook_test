@@ -1,60 +1,46 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ultimate Bravery Cookbook</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
+<body>
 {{template "page-header" .}}
-                                <center>
-                                    <h2>
-                                        <font face="Comic Sans MS" color="#FF0066">
-                                            📖 Browse Our Amazing Recipes! 📖
-                                        </font>
-                                    </h2>
-                                </center>
 
-                                <hr color="#FF00FF" size="5">
+<div class="page-heading">
+    <h1>Browse Recipes</h1>
+    <p>{{len .Recipes}} recipes in the cookbook</p>
+</div>
 
-                                {{range .Recipes}}
-                                <table width="100%" border="3" cellpadding="10" cellspacing="0" bgcolor="#FFFF99" style="margin-bottom: 20px;">
-                                    <tr>
-                                        <td width="70%">
-                                            <font face="Arial" size="5" color="#0000FF">
-                                                <b>{{.Title}}</b>
-                                            </font>
-                                            <br><br>
-                                            <font face="Arial" size="3" color="#000000">
-                                                ⏰ <b>Time:</b> {{.TimeMinutes}} minutes<br>
-                                                💰 <b>Price:</b> ${{.Price}}<br>
-                                                🏷️ <b>Tags:</b>
-                                                {{range .Tags}}
-                                                    <font color="#FF0066">{{.Name}}</font>
-                                                {{end}}
-                                            </font>
-                                        </td>
-                                        <td width="30%" align="center" valign="middle">
-                                            <a href="/recipes/{{.ID}}/">
-                                                <font face="Arial" size="4" color="#FFFFFF">
-                                                    <table border="2" cellpadding="10" bgcolor="#FF0066">
-                                                        <tr>
-                                                            <td>
-                                                                <b>VIEW RECIPE</b>
-                                                            </td>
-                                                        </tr>
-                                                    </table>
-                                                </font>
-                                            </a>
-                                        </td>
-                                    </tr>
-                                </table>
-                                {{end}}
+{{if .Recipes}}
+<div class="recipe-grid">
+    {{range .Recipes}}
+    <article class="recipe-card">
+        <h2>{{.Title}}</h2>
+        <div class="recipe-meta">
+            <span>⏱ {{.TimeMinutes}} min</span>
+            <span>💰 ${{.Price}}</span>
+        </div>
+        {{if .Tags}}
+        <div class="tag-list">
+            {{range .Tags}}
+            <span class="tag">{{.Name}}</span>
+            {{end}}
+        </div>
+        {{end}}
+        <a href="/recipes/{{.ID}}/" class="btn btn-primary">VIEW RECIPE</a>
+    </article>
+    {{end}}
+</div>
+{{else}}
+<div class="empty-state">
+    <p>No recipes found</p>
+</div>
+{{end}}
 
-                                {{if not .Recipes}}
-                                <center>
-                                    <font face="Comic Sans MS" size="4" color="#FF0000">
-                                        <b>No recipes found! 😢</b>
-                                    </font>
-                                </center>
-                                {{end}}
 {{template "page-footer" .}}
