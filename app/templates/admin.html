@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB Test — Ultimate Bravery Cookbook</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{{template "page-header" .}}
+
+<div class="page-heading">
+    <h1>Database Test Panel</h1>
+    <p>Interact with the API and inspect database responses in real time.</p>
+</div>
+
+<div class="admin-tabs">
+    <button class="admin-tab active" onclick="switchTab('recipes', this)">Recipes</button>
+    <button class="admin-tab" onclick="switchTab('ingredients', this)">Ingredients</button>
+    <button class="admin-tab" onclick="switchTab('tags', this)">Tags</button>
+</div>
+
+<!-- Recipes panel -->
+<div id="panel-recipes" class="admin-panel active">
+    <div class="admin-grid">
+        <div class="admin-card">
+            <h3>All Recipes <button class="btn btn-sm btn-secondary" onclick="loadRecipes()" style="margin-left:0.5rem">Refresh</button></h3>
+            <div id="recipes-table"><p class="loading">Loading…</p></div>
+        </div>
+        <div class="admin-card">
+            <h3>Create Recipe</h3>
+            <form onsubmit="createRecipe(event)">
+                <div class="form-group">
+                    <label>Title</label>
+                    <input type="text" id="r-title" required placeholder="e.g. Margherita Pizza">
+                </div>
+                <div class="form-group">
+                    <label>Time (minutes)</label>
+                    <input type="number" id="r-time" required placeholder="30" min="1">
+                </div>
+                <div class="form-group">
+                    <label>Price ($)</label>
+                    <input type="text" id="r-price" required placeholder="12.50">
+                </div>
+                <div class="form-group">
+                    <label>Link (optional)</label>
+                    <input type="url" id="r-link" placeholder="https://…">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="r-desc" placeholder="Step 1: …&#10;&#10;Step 2: …"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Recipe</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Ingredients panel -->
+<div id="panel-ingredients" class="admin-panel">
+    <div class="admin-card">
+        <h3>All Ingredients <button class="btn btn-sm btn-secondary" onclick="loadIngredients()" style="margin-left:0.5rem">Refresh</button></h3>
+        <div id="ingredients-table"><p class="loading">Loading…</p></div>
+    </div>
+</div>
+
+<!-- Tags panel -->
+<div id="panel-tags" class="admin-panel">
+    <div class="admin-card">
+        <h3>All Tags <button class="btn btn-sm btn-secondary" onclick="loadTags()" style="margin-left:0.5rem">Refresh</button></h3>
+        <div id="tags-table"><p class="loading">Loading…</p></div>
+    </div>
+</div>
+
+<!-- Response inspector -->
+<div class="response-panel">
+    <h3>Last Response</h3>
+    <div id="resp-status" class="response-status" style="display:none"></div>
+    <pre id="resp-body" class="response-body">— no request yet —</pre>
+</div>
+
+{{template "page-footer" .}}
+
+<script>
+function switchTab(name, btn) {
+    document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    btn.classList.add('active');
+    if (name === 'recipes') loadRecipes();
+    if (name === 'ingredients') loadIngredients();
+    if (name === 'tags') loadTags();
+}
+
+function showResponse(status, data) {
+    const el = document.getElementById('resp-status');
+    const body = document.getElementById('resp-body');
+    el.style.display = 'block';
+    el.className = 'response-status ' + (status >= 200 && status < 300 ? 'ok' : 'err');
+    el.textContent = 'HTTP ' + status;
+    body.textContent = JSON.stringify(data, null, 2);
+}
+
+async function apiFetch(url, opts) {
+    try {
+        const res = await fetch(url, opts);
+        const contentType = res.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+            data = await res.json();
+        } else {
+            data = { raw: await res.text() };
+        }
+        showResponse(res.status, data);
+        return { ok: res.ok, status: res.status, data };
+    } catch (err) {
+        showResponse(0, { error: err.message });
+        return { ok: false, status: 0, data: null };
+    }
+}
+
+async function loadRecipes() {
+    document.getElementById('recipes-table').innerHTML = '<p class="loading">Loading…</p>';
+    const { ok, data } = await apiFetch('/api/recipe/recipes/');
+    if (!ok || !Array.isArray(data)) {
+        document.getElementById('recipes-table').innerHTML = '<p class="loading">Failed to load.</p>';
+        return;
+    }
+    if (data.length === 0) {
+        document.getElementById('recipes-table').innerHTML = '<p class="loading">No recipes found.</p>';
+        return;
+    }
+    const rows = data.map(r => `
+        <tr>
+            <td>${r.id}</td>
+            <td><strong>${esc(r.title)}</strong></td>
+            <td>${r.time_minutes} min</td>
+            <td>$${esc(r.price)}</td>
+            <td>${(r.tags || []).map(t => `<span class="tag">${esc(t.name)}</span>`).join(' ')}</td>
+        </tr>`).join('');
+    document.getElementById('recipes-table').innerHTML = `
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Title</th><th>Time</th><th>Price</th><th>Tags</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function loadIngredients() {
+    document.getElementById('ingredients-table').innerHTML = '<p class="loading">Loading…</p>';
+    const { ok, data } = await apiFetch('/api/recipe/ingredients/');
+    if (!ok || !Array.isArray(data)) {
+        document.getElementById('ingredients-table').innerHTML = '<p class="loading">Failed to load.</p>';
+        return;
+    }
+    if (data.length === 0) {
+        document.getElementById('ingredients-table').innerHTML = '<p class="loading">No ingredients found.</p>';
+        return;
+    }
+    const rows = data.map(i => `
+        <tr><td>${i.id}</td><td>${esc(i.name)}</td></tr>`).join('');
+    document.getElementById('ingredients-table').innerHTML = `
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Name</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function loadTags() {
+    document.getElementById('tags-table').innerHTML = '<p class="loading">Loading…</p>';
+    const { ok, data } = await apiFetch('/api/recipe/tags/');
+    if (!ok || !Array.isArray(data)) {
+        document.getElementById('tags-table').innerHTML = '<p class="loading">Failed to load.</p>';
+        return;
+    }
+    if (data.length === 0) {
+        document.getElementById('tags-table').innerHTML = '<p class="loading">No tags found.</p>';
+        return;
+    }
+    const rows = data.map(t => `
+        <tr><td>${t.id}</td><td><span class="tag">${esc(t.name)}</span></td></tr>`).join('');
+    document.getElementById('tags-table').innerHTML = `
+        <table class="data-table">
+            <thead><tr><th>ID</th><th>Name</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+async function createRecipe(e) {
+    e.preventDefault();
+    const payload = {
+        title:        document.getElementById('r-title').value.trim(),
+        time_minutes: parseInt(document.getElementById('r-time').value, 10),
+        price:        document.getElementById('r-price').value.trim(),
+        link:         document.getElementById('r-link').value.trim(),
+        description:  document.getElementById('r-desc').value.trim(),
+    };
+    const { ok } = await apiFetch('/api/recipe/recipes/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (ok) {
+        e.target.reset();
+        loadRecipes();
+    }
+}
+
+function esc(str) {
+    return String(str ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Auto-load recipes on page load
+loadRecipes();
+</script>

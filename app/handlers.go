@@ -314,6 +314,23 @@ func recipeIngredientsHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(ingredients)
 }
 
+// adminHandler serves the database test panel.
+// Route: GET /admin
+func adminHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Route invoked: GET /admin")
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	err := templates.ExecuteTemplate(w, "admin.html", nil)
+	if err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Failed to render template: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // recipeTagsHandler lists all tags as JSON.
 // Route: GET /api/recipe/tags/
 func recipeTagsHandler(w http.ResponseWriter, r *http.Request) {

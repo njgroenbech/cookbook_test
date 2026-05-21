@@ -125,6 +125,7 @@ func main() {
             http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         }
     })
+    apiMux.HandleFunc("/admin", adminHandler)
     apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
 
