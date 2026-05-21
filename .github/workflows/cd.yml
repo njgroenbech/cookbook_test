@@ -3,13 +3,15 @@ name: Build, Push to GHCR, and Deploy
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
 
-# Prevent concurrent deploys — if a new push arrives while a deploy is running,
-# queue it rather than cancel the in-flight one.
+# For PRs: cancel the previous run when a new commit is pushed to the same branch.
+# For deploys: queue rather than cancel so an in-flight deploy is never interrupted.
 concurrency:
-  group: deploy
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Tests are intentionally omitted here: ci.yml runs the full quality gate
@@ -51,14 +53,16 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
 
-      # Only push if the vulnerability scan passed
+      # Only push if the vulnerability scan passed — skipped on pull requests
       - name: Push image to GHCR
+        if: github.event_name != 'pull_request'
         run: |
           docker tag ghcr.io/dendanskemetode/legacyproject:${{ github.sha }} ghcr.io/dendanskemetode/legacyproject:latest
           docker push ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
           docker push ghcr.io/dendanskemetode/legacyproject:latest
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build-and-push
     runs-on: ubuntu-latest
     strategy:
@@ -114,9 +118,9 @@ jobs:
             fi
 
   promote-and-notify:
+    if: always() && github.event_name != 'pull_request'
     needs: deploy
     runs-on: ubuntu-latest
-    if: always()
     steps:
       # Promote latest-stable only once ALL VMs are confirmed healthy
       - name: Promote latest-stable tag

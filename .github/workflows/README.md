@@ -20,9 +20,13 @@ This workflow is the quality gate for pull requests. It must be configured as a 
 
 ---
 
-## cd.yml — Build, scan, and deploy (master only)
+## cd.yml — Build, scan, and deploy
 
-Runs on every push to `master` and can be triggered manually via `workflow_dispatch`. A concurrency lock prevents two deploys from racing.
+Runs on every push to `master`, on every pull request targeting `master`, and can be triggered manually via `workflow_dispatch`.
+
+On **pull requests**, only `build-and-push` runs — the image is built and scanned for CVEs, but nothing is pushed to GHCR and no deploy happens. This catches Dockerfile errors and critical vulnerabilities before merge.
+
+On **push to master**, the full pipeline runs. A concurrency lock prevents two deploys from racing.
 
 ```
 build-and-push → deploy → promote-and-notify
