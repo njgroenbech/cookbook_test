@@ -205,6 +205,8 @@ jobs:
     if: always() && github.event_name != 'pull_request'
     needs: deploy
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
     steps:
       # Promote latest-stable for both custom images only once ALL VMs are confirmed healthy
       - name: Promote latest-stable tags
