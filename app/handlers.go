@@ -265,6 +265,16 @@ func recipeRecipesCreateHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    for _, tag := range recipeReq.Tags {
+        _, err = db.Exec(
+            "INSERT INTO recipe_tags (recipe_id, tag_id) VALUES ($1, $2)",
+            recipeID, tag.ID,
+        )
+        if err != nil {
+            log.Printf("Failed to add tag %d to recipe %d: %v", tag.ID, recipeID, err)
+        }
+    }
+
     recipe := Recipe{
         ID:          recipeID,
         Title:       recipeReq.Title,

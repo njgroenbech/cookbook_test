@@ -53,6 +53,12 @@
                     <label>Description</label>
                     <textarea id="r-desc" placeholder="Step 1: …&#10;&#10;Step 2: …"></textarea>
                 </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <div id="tag-checkboxes" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.25rem">
+                        <span class="loading" style="font-size:0.8rem">Loading tags…</span>
+                    </div>
+                </div>
                 <button type="submit" class="btn btn-primary">Create Recipe</button>
             </form>
         </div>
@@ -188,14 +194,30 @@ async function loadTags() {
         </table>`;
 }
 
+async function loadTagCheckboxes() {
+    const { ok, data } = await apiFetch('/api/recipe/tags/');
+    const container = document.getElementById('tag-checkboxes');
+    if (!ok || !Array.isArray(data) || data.length === 0) {
+        container.innerHTML = '<span style="font-size:0.8rem;color:var(--text-muted)">No tags available</span>';
+        return;
+    }
+    container.innerHTML = data.map(t => `
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.875rem;cursor:pointer">
+            <input type="checkbox" name="tag" value="${t.id}"> ${esc(t.name)}
+        </label>`).join('');
+}
+
 async function createRecipe(e) {
     e.preventDefault();
+    const selectedTags = [...document.querySelectorAll('#tag-checkboxes input[type=checkbox]:checked')]
+        .map(cb => ({ id: parseInt(cb.value, 10) }));
     const payload = {
         title:        document.getElementById('r-title').value.trim(),
         time_minutes: parseInt(document.getElementById('r-time').value, 10),
         price:        document.getElementById('r-price').value.trim(),
         link:         document.getElementById('r-link').value.trim(),
         description:  document.getElementById('r-desc').value.trim(),
+        tags:         selectedTags,
     };
     const { ok } = await apiFetch('/api/recipe/recipes/', {
         method: 'POST',
@@ -204,6 +226,7 @@ async function createRecipe(e) {
     });
     if (ok) {
         e.target.reset();
+        loadTagCheckboxes();
         loadRecipes();
     }
 }
@@ -214,6 +237,7 @@ function esc(str) {
         .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// Auto-load recipes on page load
+// Auto-load on page load
 loadRecipes();
+loadTagCheckboxes();
 </script>
