@@ -34,8 +34,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build locally first so Trivy can scan it before it is published
-      - name: Build image locally
+      # Build both images locally first so Trivy can scan them before anything is published
+
+      - name: Build app image locally
         uses: docker/build-push-action@v6 # TODO: pin to commit SHA
         with:
           context: ./app
@@ -43,7 +44,7 @@ jobs:
           load: true
           tags: ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
 
-      - name: Scan image for vulnerabilities
+      - name: Scan app image for vulnerabilities
         uses: aquasecurity/trivy-action@0.28.0 # TODO: pin to commit SHA
         with:
           image-ref: ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
@@ -53,13 +54,35 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
 
-      # Only push if the vulnerability scan passed — skipped on pull requests
-      - name: Push image to GHCR
+      - name: Build nginx image locally
+        uses: docker/build-push-action@v6 # TODO: pin to commit SHA
+        with:
+          context: ./network
+          push: false
+          load: true
+          tags: ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
+
+      - name: Scan nginx image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0 # TODO: pin to commit SHA
+        with:
+          image-ref: ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+      # Only push if both vulnerability scans passed — skipped on pull requests
+      - name: Push images to GHCR
         if: github.event_name != 'pull_request'
         run: |
           docker tag ghcr.io/dendanskemetode/legacyproject:${{ github.sha }} ghcr.io/dendanskemetode/legacyproject:latest
           docker push ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
           docker push ghcr.io/dendanskemetode/legacyproject:latest
+
+          docker tag ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }} ghcr.io/dendanskemetode/legacyproject-nginx:latest
+          docker push ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
+          docker push ghcr.io/dendanskemetode/legacyproject-nginx:latest
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -68,9 +91,26 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: backend
-            host_secret: SSH_HOST_BACKEND
-          # nginx VM will be added here once configured
+          - name: app
+            host_secret: SSH_HOST_APP
+            compose_dir: app
+            image: ghcr.io/dendanskemetode/legacyproject
+            use_proxy: true
+          - name: database
+            host_secret: SSH_HOST_POSTGRES
+            compose_dir: database
+            image: ""
+            use_proxy: true
+          - name: monitoring
+            host_secret: SSH_HOST_MONITORING
+            compose_dir: monitoring
+            image: ""
+            use_proxy: true
+          - name: network
+            host_secret: SSH_HOST_NGINX
+            compose_dir: network
+            image: ghcr.io/dendanskemetode/legacyproject-nginx
+            use_proxy: false
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -80,38 +120,82 @@ jobs:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.AZURE_KEY }}
-          source: "docker-compose.yaml"
-          target: "~/legacyProject/"
+          proxy_host: ${{ matrix.use_proxy && secrets.SSH_PROXY_HOST || '' }}
+          proxy_username: ${{ matrix.use_proxy && secrets.VM_USER || '' }}
+          proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
+          source: "${{ matrix.compose_dir }}/docker-compose.yaml"
+          target: "~/legacyProject/${{ matrix.compose_dir }}/"
 
-      - name: Deploy to ${{ matrix.name }} VM
-        uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
-        env:
-          ENV_FILE: ${{ secrets.ENV_FILE }}
+      # prometheus.yml is a runtime config file that must live alongside the compose file
+      - name: Copy prometheus.yml to monitoring VM
+        if: matrix.name == 'monitoring'
+        uses: appleboy/scp-action@v0.1.7 # TODO: pin to commit SHA
         with:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.AZURE_KEY }}
-          envs: ENV_FILE
+          proxy_host: ${{ secrets.SSH_PROXY_HOST }}
+          proxy_username: ${{ secrets.VM_USER }}
+          proxy_key: ${{ secrets.AZURE_KEY }}
+          source: "monitoring/prometheus.yml"
+          target: "~/legacyProject/monitoring/"
+
+      - name: Deploy to ${{ matrix.name }} VM
+        uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
+          APP_HOST: ${{ secrets.APP_PRIVATE_IP }}
+        with:
+          host: ${{ secrets[matrix.host_secret] }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.AZURE_KEY }}
+          proxy_host: ${{ matrix.use_proxy && secrets.SSH_PROXY_HOST || '' }}
+          proxy_username: ${{ matrix.use_proxy && secrets.VM_USER || '' }}
+          proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,GRAFANA_PASSWORD,APP_HOST
           script: |
-            # Write .env from secret — printf avoids a trailing newline and never echoes the value
-            printf '%s' "$ENV_FILE" > ~/legacyProject/.env
+            mkdir -p ~/legacyProject/${{ matrix.compose_dir }}
+
+            # Write .env from individual secrets — printf '%s\n' is safe for values containing special characters
+            {
+              printf 'PORT=3000\n'
+              printf 'DB_HOST=%s\n'                    "$DB_HOST"
+              printf 'DB_PORT=%s\n'                    "$DB_PORT"
+              printf 'DB_USER=%s\n'                    "$DB_USER"
+              printf 'DB_PASSWORD=%s\n'                "$DB_PASSWORD"
+              printf 'DB_NAME=%s\n'                    "$DB_NAME"
+              printf 'POSTGRES_USER=%s\n'              "$DB_USER"
+              printf 'POSTGRES_PASSWORD=%s\n'          "$DB_PASSWORD"
+              printf 'POSTGRES_DB=%s\n'                "$DB_NAME"
+              printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "$GRAFANA_PASSWORD"
+              printf 'APP_HOST=%s\n'                   "$APP_HOST"
+            } > ~/legacyProject/${{ matrix.compose_dir }}/.env
 
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
 
             # Pull latest-stable now so it is available locally if rollback is needed.
+            # Only applies to services with a custom image (app and network).
             # On the very first deploy this tag does not exist yet — the pull is a no-op.
-            sudo docker pull ghcr.io/dendanskemetode/legacyproject:latest-stable 2>/dev/null || true
+            IMAGE="${{ matrix.image }}"
+            if [ -n "$IMAGE" ]; then
+              sudo docker pull "$IMAGE:latest-stable" 2>/dev/null || true
+            fi
 
-            cd ~/legacyProject
+            cd ~/legacyProject/${{ matrix.compose_dir }}
             sudo docker compose pull
 
             # --wait blocks until all services with healthchecks are healthy.
-            # If the app fails its healthcheck within the configured retries, roll back
-            # to latest-stable (the last confirmed-healthy image).
+            # If the healthcheck never passes within 60 seconds, roll back to
+            # latest-stable (the last confirmed-healthy image).
             if ! sudo docker compose up -d --force-recreate --wait --wait-timeout 60; then
               echo "Deployment failed health check — rolling back to latest-stable"
-              if sudo docker image inspect ghcr.io/dendanskemetode/legacyproject:latest-stable > /dev/null 2>&1; then
-                sudo docker tag ghcr.io/dendanskemetode/legacyproject:latest-stable ghcr.io/dendanskemetode/legacyproject:latest
+              if [ -n "$IMAGE" ] && sudo docker image inspect "$IMAGE:latest-stable" > /dev/null 2>&1; then
+                sudo docker tag "$IMAGE:latest-stable" "$IMAGE:latest"
                 sudo docker compose up -d --force-recreate --wait
               fi
               exit 1
@@ -122,14 +206,19 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      # Promote latest-stable only once ALL VMs are confirmed healthy
-      - name: Promote latest-stable tag
+      # Promote latest-stable for both custom images only once ALL VMs are confirmed healthy
+      - name: Promote latest-stable tags
         if: needs.deploy.result == 'success'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
           docker pull ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
           docker tag  ghcr.io/dendanskemetode/legacyproject:${{ github.sha }} ghcr.io/dendanskemetode/legacyproject:latest-stable
           docker push ghcr.io/dendanskemetode/legacyproject:latest-stable
+
+          docker pull ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
+          docker tag  ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }} ghcr.io/dendanskemetode/legacyproject-nginx:latest-stable
+          docker push ghcr.io/dendanskemetode/legacyproject-nginx:latest-stable
 
       # Notify via Discord webhook if DISCORD_WEBHOOK_URL secret is configured; silently skipped otherwise.
       - name: Notify deployment status

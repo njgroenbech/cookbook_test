@@ -33,22 +33,32 @@ build-and-push → deploy → promote-and-notify
 ```
 
 ### build-and-push
-1. Builds the Docker image locally (not yet pushed to the registry).
-2. Scans the local image with **Trivy** for `CRITICAL` and `HIGH` CVEs. The pipeline stops here if any unfixed vulnerabilities are found.
-3. Pushes two tags to GHCR: `:latest` and `:<commit-sha>`.
+1. Builds the **app** image (`./app`) and **nginx** image (`./network`) locally (not yet pushed to the registry).
+2. Scans both images with **Trivy** for `CRITICAL` and `HIGH` CVEs. The pipeline stops if any unfixed vulnerabilities are found.
+3. Pushes both images to GHCR with two tags each: `:latest` and `:<commit-sha>`.
 
 ### deploy
-Deploys to the backend VM over SSH using a matrix (nginx VM will be added once configured). For each VM:
+Deploys to four VMs in parallel using a matrix — one per service:
 
-1. Copies `docker-compose.yaml` from the runner to `~/legacyProject/` on the VM via SCP.
-2. Writes `~/legacyProject/.env` from the `ENV_FILE` secret — the value is passed as an environment variable and never echoed to logs.
-3. Pulls the new image from GHCR.
-4. Runs `docker compose up --wait`, which blocks until the container passes its **healthcheck**. If the healthcheck never passes within 60 seconds, the pipeline rolls back to `:latest-stable` (the last confirmed-healthy image) automatically.
+| VM | Compose file | Custom image | Proxy |
+|---|---|---|---|
+| app | `app/docker-compose.yaml` | `legacyproject` | via network VM |
+| database | `database/docker-compose.yaml` | none (postgres:16) | via network VM |
+| monitoring | `monitoring/docker-compose.yaml` + `prometheus.yml` | none | via network VM |
+| network | `network/docker-compose.yaml` | `legacyproject-nginx` | direct (public IP) |
+
+For each VM:
+1. Copies the service's `docker-compose.yaml` to `~/legacyProject/<service>/` via SCP. The monitoring VM also receives `prometheus.yml`.
+2. Writes `~/legacyProject/<service>/.env` from the service-specific `ENV_FILE_*` secret — never echoed to logs.
+3. Pulls the new image and runs `docker compose up --wait`, blocking until all healthchecks pass within 60 seconds.
+4. On failure, rolls back to `:<image>:latest-stable` (the last confirmed-healthy image) for services with a custom image.
+
+App, database, and monitoring VMs have no public IP and are reached via the network VM as a jump host (`SSH_PROXY_HOST`).
 
 ### promote-and-notify
-Runs once after all VMs in the deploy matrix are confirmed healthy.
+Runs once after all four VMs are confirmed healthy.
 
-1. Promotes the deployed commit SHA to the `:latest-stable` tag — a known-good reference that is never pushed speculatively.
+1. Promotes both `legacyproject` and `legacyproject-nginx` to `:latest-stable` — a known-good reference that is never pushed speculatively.
 2. Sends a Discord notification with the deploy status (requires the `DISCORD_WEBHOOK_URL` secret; silently skipped if not set).
 
 ---
@@ -58,10 +68,20 @@ Runs once after all VMs in the deploy matrix are confirmed healthy.
 | Secret | Used by |
 |---|---|
 | `GITHUB_TOKEN` | GHCR login (provided automatically by GitHub Actions) |
-| `SSH_HOST_BACKEND` | SSH target for the backend VM |
-| `VM_USER` | SSH username for the VM |
-| `AZURE_KEY` | SSH private key for the VM |
-| `ENV_FILE` | Full contents of the `.env` file, written to the VM on each deploy |
+| `SSH_HOST_APP` | SSH target for the app VM |
+| `SSH_HOST_POSTGRES` | SSH target for the database VM |
+| `SSH_HOST_MONITORING` | SSH target for the monitoring VM |
+| `SSH_HOST_NGINX` | SSH target for the network/nginx VM (public IP) |
+| `SSH_PROXY_HOST` | Jump host for reaching VMs without a public IP (the nginx VM's IP) |
+| `VM_USER` | SSH username for all VMs |
+| `AZURE_KEY` | SSH private key for all VMs |
+| `DB_HOST` | Database hostname — written to `.env` on app and database VMs |
+| `DB_PORT` | Database port |
+| `DB_USER` | Database username (also used as `POSTGRES_USER`) |
+| `DB_PASSWORD` | Database password (also used as `POSTGRES_PASSWORD`) |
+| `DB_NAME` | Database name (also used as `POSTGRES_DB`) |
+| `GRAFANA_PASSWORD` | Grafana admin password (`GF_SECURITY_ADMIN_PASSWORD`) |
+| `APP_PRIVATE_IP` | Private IP of the app VM — written as `APP_HOST` in the nginx `.env` |
 | `DISCORD_WEBHOOK_URL` | Deploy notifications (optional) |
 
 ---

@@ -2,6 +2,6 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: "your-app"
+  - job_name: "ultimate-bravery-cookbook"
     static_configs:
-      - targets: ["go_app:3000"]
+      - targets: ["<app-vm-ip>:3000"]
