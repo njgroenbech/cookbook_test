@@ -35,15 +35,11 @@ jobs:
         working-directory: ./app
         run: go vet ./...
 
-      - name: Run tests with race detector and measure coverage
+      - name: Run unit tests with race detector
         working-directory: ./app
-        run: |
-          go test -race -coverprofile=coverage.out ./...
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{gsub(/%/,""); print $3}')
-          echo "Total coverage: ${COVERAGE}%"
-          awk -v c="$COVERAGE" 'BEGIN { if (c+0 < 30) { print "Coverage " c "% is below the 30% minimum threshold"; exit 1 } }'
+        run: go test -race ./...
 
-      - name: Run integration tests
+      - name: Run integration tests and measure coverage
         working-directory: ./app
         env:
           DB_HOST: localhost
@@ -51,7 +47,11 @@ jobs:
           DB_USER: test
           DB_PASSWORD: test
           DB_NAME: testdb
-        run: go test -tags integration -race ./...
+        run: |
+          go test -tags integration -race -coverprofile=coverage.out ./...
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{gsub(/%/,""); print $3}')
+          echo "Total coverage: ${COVERAGE}%"
+          awk -v c="$COVERAGE" 'BEGIN { if (c+0 < 30) { print "Coverage " c "% is below the 30% minimum threshold"; exit 1 } }'
 
       - name: Check for known vulnerabilities
         working-directory: ./app
