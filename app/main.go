@@ -127,6 +127,7 @@ func main() {
     })
     apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
+    apiMux.HandleFunc("/healthz", healthzHandler)
 
     // Serve the raw OpenAPI spec
     apiMux.HandleFunc("/swagger/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
