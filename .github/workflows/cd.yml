@@ -45,7 +45,7 @@ jobs:
           tags: ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
 
       - name: Scan app image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0 # TODO: pin to commit SHA
+        uses: aquasecurity/trivy-action@0.36.0 # TODO: pin to commit SHA
         with:
           image-ref: ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
           format: table
@@ -63,7 +63,7 @@ jobs:
           tags: ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
 
       - name: Scan nginx image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0 # TODO: pin to commit SHA
+        uses: aquasecurity/trivy-action@0.36.0 # TODO: pin to commit SHA
         with:
           image-ref: ghcr.io/dendanskemetode/legacyproject-nginx:${{ github.sha }}
           format: table
