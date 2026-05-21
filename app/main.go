@@ -125,8 +125,10 @@ func main() {
             http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         }
     })
+    apiMux.HandleFunc("/admin", adminHandler)
     apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
+    apiMux.HandleFunc("/healthz", healthzHandler)
 
     apiMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusOK)

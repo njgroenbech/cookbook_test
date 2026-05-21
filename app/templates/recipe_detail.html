@@ -1,102 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>{{.Title}} - Ultimate Bravery Cookbook</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} — Ultimate Bravery Cookbook</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
+<body>
 {{template "page-header" .}}
-                                <center>
-                                    <h2>
-                                        <font face="Comic Sans MS" color="#FF0066">
-                                            🍽️ {{.Title}} 🍽️
-                                        </font>
-                                    </h2>
-                                </center>
 
-                                <table width="100%" border="3" cellpadding="15" cellspacing="0" bgcolor="#CCFFCC">
-                                    <tr>
-                                        <td>
-                                            <font face="Arial" size="3" color="#000000">
-                                                ⏰ <b>Cooking Time:</b> {{.TimeMinutes}} minutes<br>
-                                                💰 <b>Estimated Price:</b> ${{.Price}}<br>
-                                                {{if .Link}}
-                                                🔗 <b>Link:</b> <a href="{{.Link}}">{{.Link}}</a><br>
-                                                {{end}}
-                                                🏷️ <b>Tags:</b>
-                                                {{range $index, $tag := .Tags}}
-                                                    <font color="#FF0066"><b>{{$tag.Name}}</b></font>{{if not (eq (add $index 1) (len $.Tags))}}, {{end}}
-                                                {{end}}
-                                            </font>
-                                        </td>
-                                    </tr>
-                                </table>
+<a href="/" class="back-link">← Back to recipes</a>
 
-                                <br>
+<div class="detail-header">
+    <h1>{{.Title}}</h1>
+    <div class="detail-meta">
+        <span>⏱ {{.TimeMinutes}} min</span>
+        <span>💰 ${{.Price}}</span>
+        {{if .Link}}<span>🔗 <a href="{{.Link}}">Recipe source</a></span>{{end}}
+    </div>
+    {{if .Tags}}
+    <div class="tag-list">
+        {{range .Tags}}<span class="tag">{{.Name}}</span>{{end}}
+    </div>
+    {{end}}
+</div>
 
-                                <table width="100%" border="3" cellpadding="15" cellspacing="0" bgcolor="#FFCCFF">
-                                    <tr>
-                                        <td>
-                                            <center>
-                                                <font face="Comic Sans MS" size="4" color="#0000FF">
-                                                    <b>🥕 INGREDIENTS 🥕</b>
-                                                </font>
-                                            </center>
-                                            <br>
-                                            <font face="Arial" size="3" color="#000000">
-                                                <ul>
-                                                    {{range .Ingredients}}
-                                                    <li>
-                                                        <b>{{.Amount}} {{.Unit}}</b> - {{.Name}}
-                                                    </li>
-                                                    {{end}}
-                                                </ul>
-                                            </font>
-                                        </td>
-                                    </tr>
-                                </table>
+{{if .Ingredients}}
+<section class="detail-section">
+    <h2>Ingredients</h2>
+    <ul class="ingredient-list">
+        {{range .Ingredients}}
+        <li>
+            <span class="ingredient-amount">{{.Amount}} {{.Unit}}</span>
+            <span>{{.Name}}</span>
+        </li>
+        {{end}}
+    </ul>
+</section>
+{{end}}
 
-                                <br>
+{{if .Description}}
+<section class="detail-section">
+    <h2>Instructions</h2>
+    {{range $step := split .Description "\n\n"}}
+        {{if $step}}
+        <p class="instruction-step">{{$step}}</p>
+        {{end}}
+    {{end}}
+</section>
+{{end}}
 
-                                <table width="100%" border="3" cellpadding="15" cellspacing="0" bgcolor="#CCFFFF">
-                                    <tr>
-                                        <td>
-                                            <center>
-                                                <font face="Comic Sans MS" size="4" color="#0000FF">
-                                                    <b>👨‍🍳 COOKING INSTRUCTIONS 👨‍🍳</b>
-                                                </font>
-                                            </center>
-                                            <br>
-                                            <font face="Arial" size="3" color="#000000">
-                                                {{if .Description}}
-                                                    {{range $step := split .Description "\n\n"}}
-                                                        {{if $step}}
-                                                        <p style="line-height: 1.6;">
-                                                            <b>{{$step}}</b>
-                                                        </p>
-                                                        {{end}}
-                                                    {{end}}
-                                                {{else}}
-                                                    <p>No instructions available.</p>
-                                                {{end}}
-                                            </font>
-                                        </td>
-                                    </tr>
-                                </table>
-
-                                <br>
-
-                                <center>
-                                    <a href="/">
-                                        <table border="3" cellpadding="10" bgcolor="#00FF00">
-                                            <tr>
-                                                <td>
-                                                    <font face="Arial" size="4" color="#000000">
-                                                        <b>⬅️ BACK TO HOME</b>
-                                                    </font>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                    </a>
-                                </center>
 {{template "page-footer" .}}

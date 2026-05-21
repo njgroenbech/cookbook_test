@@ -265,6 +265,16 @@ func recipeRecipesCreateHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    for _, tag := range recipeReq.Tags {
+        _, err = db.Exec(
+            "INSERT INTO recipe_tags (recipe_id, tag_id) VALUES ($1, $2)",
+            recipeID, tag.ID,
+        )
+        if err != nil {
+            log.Printf("Failed to add tag %d to recipe %d: %v", tag.ID, recipeID, err)
+        }
+    }
+
     recipe := Recipe{
         ID:          recipeID,
         Title:       recipeReq.Title,
@@ -314,6 +324,23 @@ func recipeIngredientsHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(ingredients)
 }
 
+// adminHandler serves the database test panel.
+// Route: GET /admin
+func adminHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Route invoked: GET /admin")
+
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	err := templates.ExecuteTemplate(w, "admin.html", nil)
+	if err != nil {
+		log.Printf("Template execution error: %v", err)
+		http.Error(w, "Failed to render template: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
 // recipeTagsHandler lists all tags as JSON.
 // Route: GET /api/recipe/tags/
 func recipeTagsHandler(w http.ResponseWriter, r *http.Request) {
@@ -345,4 +372,23 @@ func recipeTagsHandler(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(tags)
+}
+
+// healthzHandler reports whether the app and its database are reachable.
+// Route: GET /healthz
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+
+    if err := db.Ping(); err != nil {
+        w.WriteHeader(http.StatusServiceUnavailable)
+        json.NewEncoder(w).Encode(map[string]string{"status": "unhealthy", "db": "down"})
+        return
+    }
+
+    json.NewEncoder(w).Encode(map[string]string{"status": "ok", "db": "ok"})
 }
