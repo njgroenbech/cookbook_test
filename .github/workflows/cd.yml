@@ -12,33 +12,19 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - uses: actions/setup-go@v5 # TODO: pin to commit SHA
-        with:
-          go-version-file: ./app/go.mod
-
-      - name: Run tests with race detector
-        working-directory: ./app
-        run: go test -race ./...
+  # Tests are intentionally omitted here: ci.yml runs the full quality gate
+  # (lint, tests, coverage, govulncheck) on every push and must be set as a
+  # required status check on master via branch protection rules.
+  # Note: workflow_dispatch bypasses branch protection — only trigger manually
+  # on commits that have already passed CI.
 
   build-and-push:
-    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.sha_tag }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Set image tag
-        id: meta
-        run: echo "sha_tag=${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
       - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
@@ -75,61 +61,66 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            host_secret: SSH_HOST_BACKEND
+          # nginx VM will be added here once configured
     steps:
-      - name: Deploy to backend VM
-        uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Copy docker-compose.yaml to ${{ matrix.name }} VM
+        uses: appleboy/scp-action@v0.1.7 # TODO: pin to commit SHA
         with:
-          host: ${{ secrets.SSH_HOST_BACKEND }}
+          host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.AZURE_KEY }}
+          source: "docker-compose.yaml"
+          target: "~/legacyProject/"
+
+      - name: Deploy to ${{ matrix.name }} VM
+        uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        with:
+          host: ${{ secrets[matrix.host_secret] }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.AZURE_KEY }}
+          envs: ENV_FILE
           script: |
+            # Write .env from secret — printf avoids a trailing newline and never echoes the value
+            printf '%s' "$ENV_FILE" > ~/legacyProject/.env
+
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+
+            # Pull latest-stable now so it is available locally if rollback is needed.
+            # On the very first deploy this tag does not exist yet — the pull is a no-op.
+            sudo docker pull ghcr.io/dendanskemetode/legacyproject:latest-stable 2>/dev/null || true
+
             cd ~/legacyProject
-            sudo git pull
-
-            # Record image ID of the currently running version for rollback
-            PREV_IMAGE=$(docker images ghcr.io/dendanskemetode/legacyproject:latest --format "{{.ID}}" 2>/dev/null || true)
-
             sudo docker compose pull
 
-            # --wait blocks until all services with healthchecks are healthy (requires Docker Compose v2.1+).
-            # If the app fails its healthcheck within the configured retries, we roll back automatically.
+            # --wait blocks until all services with healthchecks are healthy.
+            # If the app fails its healthcheck within the configured retries, roll back
+            # to latest-stable (the last confirmed-healthy image).
             if ! sudo docker compose up -d --force-recreate --wait --wait-timeout 60; then
-              echo "Deployment failed health check — rolling back to previous image"
-              if [ -n "$PREV_IMAGE" ]; then
-                docker tag "$PREV_IMAGE" ghcr.io/dendanskemetode/legacyproject:latest
-                sudo docker compose up -d --force-recreate
+              echo "Deployment failed health check — rolling back to latest-stable"
+              if sudo docker image inspect ghcr.io/dendanskemetode/legacyproject:latest-stable > /dev/null 2>&1; then
+                sudo docker tag ghcr.io/dendanskemetode/legacyproject:latest-stable ghcr.io/dendanskemetode/legacyproject:latest
+                sudo docker compose up -d --force-recreate --wait
               fi
               exit 1
             fi
 
-      - name: Deploy to nginx VM
-        uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
-        with:
-          host: ${{ secrets.SSH_HOST_NGINX }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.AZURE_KEY }}
-          script: |
-            sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
-            cd ~/legacyProject
-            sudo git pull
-
-            PREV_IMAGE=$(docker images ghcr.io/dendanskemetode/legacyproject:latest --format "{{.ID}}" 2>/dev/null || true)
-
-            sudo docker compose pull
-
-            if ! sudo docker compose up -d --force-recreate --wait --wait-timeout 60; then
-              echo "Deployment failed health check — rolling back to previous image"
-              if [ -n "$PREV_IMAGE" ]; then
-                docker tag "$PREV_IMAGE" ghcr.io/dendanskemetode/legacyproject:latest
-                sudo docker compose up -d --force-recreate
-              fi
-              exit 1
-            fi
-
-      # Only promote latest-stable once both VMs are confirmed healthy
+  promote-and-notify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      # Promote latest-stable only once ALL VMs are confirmed healthy
       - name: Promote latest-stable tag
-        if: success()
+        if: needs.deploy.result == 'success'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker pull ghcr.io/dendanskemetode/legacyproject:${{ github.sha }}
@@ -138,9 +129,8 @@ jobs:
 
       # Notify via Discord webhook if DISCORD_WEBHOOK_URL secret is configured; silently skipped otherwise.
       - name: Notify deployment status
-        if: always()
         run: |
-          STATUS="${{ job.status }}"
+          STATUS="${{ needs.deploy.result }}"
           SHA="${{ github.sha }}"
           ACTOR="${{ github.actor }}"
           WEBHOOK="${{ secrets.DISCORD_WEBHOOK_URL }}"
