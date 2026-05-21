@@ -386,6 +386,28 @@ fi
 echo -e "${GREEN}✅ app VM NSG rule created (port 3000 from VNet)${NC}"
 
 echo ""
+echo "app VM: adding NSG rule — allow TCP 9100 (node_exporter) inbound from VNet"
+
+if ! az network nsg rule show \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$APP_NSG" \
+        --name "AllowVnet9100" &>/dev/null; then
+    az network nsg rule create \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$APP_NSG" \
+        --name "AllowVnet9100" \
+        --priority 210 \
+        --source-address-prefixes "10.0.1.0/24" \
+        --destination-port-ranges 9100 \
+        --protocol Tcp \
+        --access Allow \
+        --direction Inbound \
+        --output table
+fi
+
+echo -e "${GREEN}✅ app VM NSG rule created (port 9100 from VNet)${NC}"
+
+echo ""
 echo "postgres VM: adding NSG rule — allow TCP 5432 inbound from app VM only"
 
 POSTGRES_NIC_ID=$(az vm show \
@@ -416,6 +438,60 @@ if ! az network nsg rule show \
 fi
 
 echo -e "${GREEN}✅ postgres VM NSG rule created (port 5432 from app VM only)${NC}"
+
+echo ""
+echo "postgres VM: adding NSG rule — allow TCP 9100 (node_exporter) inbound from VNet"
+
+if ! az network nsg rule show \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$POSTGRES_NSG" \
+        --name "AllowVnet9100" &>/dev/null; then
+    az network nsg rule create \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$POSTGRES_NSG" \
+        --name "AllowVnet9100" \
+        --priority 210 \
+        --source-address-prefixes "10.0.1.0/24" \
+        --destination-port-ranges 9100 \
+        --protocol Tcp \
+        --access Allow \
+        --direction Inbound \
+        --output table
+fi
+
+echo -e "${GREEN}✅ postgres VM NSG rule created (port 9100 from VNet)${NC}"
+
+echo ""
+echo "nginx VM: adding NSG rule — allow TCP 9100 (node_exporter) inbound from VNet"
+
+NGINX_NIC_ID=$(az vm show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$NGINX_VM_NAME" \
+    --query "networkProfile.networkInterfaces[0].id" \
+    --output tsv)
+
+NGINX_NSG=$(az network nic show --ids "$NGINX_NIC_ID" \
+    --query "networkSecurityGroup.id" \
+    --output tsv | xargs basename)
+
+if ! az network nsg rule show \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$NGINX_NSG" \
+        --name "AllowVnet9100" &>/dev/null; then
+    az network nsg rule create \
+        --resource-group "$RESOURCE_GROUP" \
+        --nsg-name "$NGINX_NSG" \
+        --name "AllowVnet9100" \
+        --priority 320 \
+        --source-address-prefixes "10.0.1.0/24" \
+        --destination-port-ranges 9100 \
+        --protocol Tcp \
+        --access Allow \
+        --direction Inbound \
+        --output table
+fi
+
+echo -e "${GREEN}✅ nginx VM NSG rule created (port 9100 from VNet)${NC}"
 
 echo ""
 echo "monitoring VM: adding NSG rules — allow TCP 9090/3001 inbound from VNet"
@@ -480,6 +556,13 @@ NGINX_PUBLIC_IP=$(az vm show \
     --name "$NGINX_VM_NAME" \
     --show-details \
     --query publicIps \
+    --output tsv)
+
+NGINX_PRIVATE_IP=$(az vm show \
+    --resource-group "$RESOURCE_GROUP" \
+    --name "$NGINX_VM_NAME" \
+    --show-details \
+    --query privateIps \
     --output tsv)
 
 APP_PUBLIC_IP=$(az vm show \
@@ -598,11 +681,12 @@ install_docker() {
     fi
 
     # Compute the ports this VM role needs open (expanded locally into the heredoc).
+    # node_exporter (9100) runs on nginx/app/postgres so Prometheus can scrape them.
     local UFW_PORTS
     case "$ROLE" in
-        nginx)      UFW_PORTS="80 443" ;;
-        app)        UFW_PORTS="3000" ;;
-        postgres)   UFW_PORTS="5432" ;;
+        nginx)      UFW_PORTS="80 443 9100" ;;
+        app)        UFW_PORTS="3000 9100" ;;
+        postgres)   UFW_PORTS="5432 9100" ;;
         monitoring) UFW_PORTS="9090 3001" ;;
         *)          UFW_PORTS="" ;;
     esac
@@ -656,6 +740,46 @@ install_docker "$POSTGRES_PRIVATE_IP"  "postgres"   "postgres"  "$ADMIN_USERNAME
 install_docker "$MONITORING_PRIVATE_IP" "monitoring" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
 
 echo -e "${YELLOW}⚠️  Note: docker group changes require re-login; all docker commands below use sudo${NC}"
+
+# ==========================================
+# Install node_exporter on nginx/app/postgres
+# ==========================================
+
+install_node_exporter() {
+    local VM_IP="$1"
+    local VM_LABEL="$2"
+    local JUMP="${3:-}"
+    local SSH_KEY="${SSH_KEY_PATH%.pub}"
+    local -a SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY")
+    if [ -n "$JUMP" ]; then
+        SSH_OPTS+=(-o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $JUMP")
+    fi
+
+    echo ""
+    echo "=========================================="
+    echo "Installing node_exporter on $VM_LABEL VM"
+    echo "=========================================="
+
+    ssh "${SSH_OPTS[@]}" "$ADMIN_USERNAME@$VM_IP" << 'ENDSSH'
+set -e
+sudo docker rm -f node_exporter 2>/dev/null || true
+sudo docker run -d \
+    --name node_exporter \
+    --restart unless-stopped \
+    --net=host \
+    --pid=host \
+    -v "/:/host:ro,rslave" \
+    quay.io/prometheus/node-exporter:latest \
+    --path.rootfs=/host
+echo "node_exporter container started."
+ENDSSH
+
+    echo -e "${GREEN}✅ node_exporter installed on $VM_LABEL VM${NC}"
+}
+
+install_node_exporter "$NGINX_PUBLIC_IP"     "nginx"
+install_node_exporter "$APP_PUBLIC_IP"       "app"
+install_node_exporter "$POSTGRES_PRIVATE_IP" "postgres" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
 
 # ==========================================
 # Clone repo on all VMs
@@ -832,6 +956,7 @@ cd $REMOTE_APP_DIR/network
 
 cat > .env << ENVEOF
 APP_HOST=$APP_PRIVATE_IP
+MONITORING_HOST=$MONITORING_PRIVATE_IP
 ENVEOF
 
 echo "Authenticating to GHCR..."
@@ -866,6 +991,7 @@ cd $REMOTE_APP_DIR/monitoring
 
 cat > .env << ENVEOF
 GF_SECURITY_ADMIN_PASSWORD=$GRAFANA_PASSWORD
+GF_SERVER_ROOT_URL=http://$NGINX_PUBLIC_IP/grafana/
 ENVEOF
 
 cat > prometheus.yml << PROMEOF
@@ -876,6 +1002,15 @@ scrape_configs:
   - job_name: "ultimate-bravery-cookbook"
     static_configs:
       - targets: ["$APP_PRIVATE_IP:3000"]
+
+  - job_name: "node_exporter"
+    static_configs:
+      - targets:
+          - "$NGINX_PRIVATE_IP:9100"
+          - "$APP_PRIVATE_IP:9100"
+          - "$POSTGRES_PRIVATE_IP:9100"
+        labels:
+          subnet: "10.0.1.0/24"
 PROMEOF
 
 echo "Removing any existing containers..."
@@ -1044,7 +1179,10 @@ echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}                     
 echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$POSTGRES_PRIVATE_IP${NC}    (postgres via app jump)"
 echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC}  (monitoring via app jump)"
 echo ""
-echo "Grafana (SSH tunnel to access from your machine):"
+echo "Grafana (publicly proxied through nginx):"
+echo -e "  ${GREEN}http://$NGINX_PUBLIC_IP/grafana/${NC}"
+echo ""
+echo "Grafana (alternative — SSH tunnel via app VM jump):"
 echo -e "  ${YELLOW}ssh -L 3001:$MONITORING_PRIVATE_IP:3001 $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}"
 echo    "  Then open: http://localhost:3001/"
 echo ""

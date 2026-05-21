@@ -127,6 +127,7 @@ func main() {
     })
     apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
+    apiMux.HandleFunc("/healthz", healthzHandler)
 
     apiMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusOK)

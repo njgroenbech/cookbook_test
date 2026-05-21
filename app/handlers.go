@@ -346,3 +346,22 @@ func recipeTagsHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(tags)
 }
+
+// healthzHandler reports whether the app and its database are reachable.
+// Route: GET /healthz
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+
+    if err := db.Ping(); err != nil {
+        w.WriteHeader(http.StatusServiceUnavailable)
+        json.NewEncoder(w).Encode(map[string]string{"status": "unhealthy", "db": "down"})
+        return
+    }
+
+    json.NewEncoder(w).Encode(map[string]string{"status": "ok", "db": "ok"})
+}
