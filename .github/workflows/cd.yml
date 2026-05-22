@@ -202,7 +202,7 @@ jobs:
             fi
 
   promote-and-notify:
-    if: always() && github.event_name != 'pull_request'
+    if: always() && github.event_name != 'pull_request' && needs.deploy.result != 'skipped'
     needs: deploy
     runs-on: ubuntu-latest
     permissions:
@@ -223,14 +223,36 @@ jobs:
           docker push ghcr.io/dendanskemetode/legacyproject-nginx:latest-stable
 
       # Notify via Discord webhook if DISCORD_WEBHOOK_URL secret is configured; silently skipped otherwise.
+      # On failure, fetches a random GIF from Giphy (requires GIPHY_API_KEY secret).
       - name: Notify deployment status
         run: |
           STATUS="${{ needs.deploy.result }}"
           SHA="${{ github.sha }}"
           ACTOR="${{ github.actor }}"
+          BRANCH="${{ github.ref_name }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           WEBHOOK="${{ secrets.DISCORD_WEBHOOK_URL }}"
+          GIPHY_KEY="${{ secrets.GIPHY_API_KEY }}"
           if [ -n "$WEBHOOK" ]; then
-            curl -s -X POST "$WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -d "{\"content\":\"Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR}\"}"
+            MSG="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} on \`${BRANCH}\`\n[View run](${RUN_URL})"
+            if [ "$STATUS" = "failure" ]; then
+              GIF=""
+              if [ -n "$GIPHY_KEY" ]; then
+                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=fail&rating=g" \
+                      | jq -r '.data.images.original.url // empty')
+              fi
+              if [ -n "$GIF" ]; then
+                curl -s -X POST "$WEBHOOK" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\",\"image\":{\"url\":\"${GIF}\"}}]}"
+              else
+                curl -s -X POST "$WEBHOOK" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\"}]}"
+              fi
+            else
+              curl -s -X POST "$WEBHOOK" \
+                -H "Content-Type: application/json" \
+                -d "{\"embeds\":[{\"color\":3066993,\"description\":\"${MSG}\"}]}"
+            fi
           fi
