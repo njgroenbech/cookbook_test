@@ -257,10 +257,10 @@ jobs:
             GIF=""
             if [ -n "$GIPHY_KEY" ]; then
               if [ "$STATUS" = "failure" ]; then
-                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=fail&rating=g" \
+                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=fail" \
                       | jq -r '.data.images.original.url // empty')
               else
-                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=success+celebration&rating=g" \
+                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=success+celebration" \
                       | jq -r '.data.images.original.url // empty')
               fi
             fi
