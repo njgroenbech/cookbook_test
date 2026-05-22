@@ -126,7 +126,15 @@ func main() {
         }
     })
     apiMux.HandleFunc("/admin", adminHandler)
-    apiMux.HandleFunc("/api/recipe/ingredients/", recipeIngredientsHandler)
+    apiMux.HandleFunc("/api/recipe/ingredients/", func(w http.ResponseWriter, r *http.Request) {
+        if r.Method == http.MethodGet {
+            recipeIngredientsHandler(w, r)
+        } else if r.Method == http.MethodPost {
+            recipeIngredientsCreateHandler(w, r)
+        } else {
+            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        }
+    })
     apiMux.HandleFunc("/api/recipe/tags/", recipeTagsHandler)
     apiMux.HandleFunc("/healthz", healthzHandler)
 
