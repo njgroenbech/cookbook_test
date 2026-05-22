@@ -236,10 +236,16 @@ jobs:
           WEBHOOK="${{ secrets.DISCORD_WEBHOOK_URL }}"
           GIPHY_KEY="${{ secrets.GIPHY_API_KEY }}"
           SOURCE_BRANCH=$(echo "$COMMIT_MSG" | head -1 | sed -n 's/Merge pull request #[0-9]* from [^/]*\/\(.*\)/\1/p')
+          PR_NUMBER=$(echo "$COMMIT_MSG" | head -1 | sed -n 's/Merge pull request #\([0-9]*\) from .*/\1/p')
           if [ -n "$SOURCE_BRANCH" ]; then
             BRANCH_LINE="\n\`${SOURCE_BRANCH}\` → \`${BRANCH}\`"
           else
             BRANCH_LINE=""
+          fi
+          if [ -n "$PR_NUMBER" ]; then
+            BOT_NAME="Frida #${PR_NUMBER}"
+          else
+            BOT_NAME="Frida"
           fi
           if [ -n "$WEBHOOK" ]; then
             TEXT="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} — [View run](${RUN_URL})${BRANCH_LINE}"
@@ -254,9 +260,9 @@ jobs:
               fi
             fi
             if [ -n "$GIF" ]; then
-              PAYLOAD="{\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
+              PAYLOAD="{\"username\":\"${BOT_NAME}\",\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
             else
-              PAYLOAD="{\"content\":\"${TEXT}\"}"
+              PAYLOAD="{\"username\":\"${BOT_NAME}\",\"content\":\"${TEXT}\"}"
             fi
             curl -s -X POST "$WEBHOOK" \
               -H "Content-Type: application/json" \
