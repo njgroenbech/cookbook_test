@@ -296,6 +296,11 @@ func recipeRecipesCreateHandler(w http.ResponseWriter, r *http.Request) {
 func recipeIngredientsHandler(w http.ResponseWriter, r *http.Request) {
     log.Printf("Route invoked: GET /api/recipe/ingredients/")
 
+    if r.Method != http.MethodGet {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
     _ = r.URL.Query().Get("assigned_only")
 
     rows, err := db.Query("SELECT id, name FROM ingredients")
