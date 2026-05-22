@@ -89,6 +89,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: app
@@ -152,6 +153,7 @@ jobs:
           DB_NAME: ${{ secrets.DB_NAME }}
           GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
           APP_HOST: ${{ secrets.APP_PRIVATE_IP }}
+          MONITORING_HOST: ${{ secrets.MONITORING_PRIVATE_IP }}
         with:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}
@@ -159,7 +161,7 @@ jobs:
           proxy_host: ${{ matrix.use_proxy && secrets.SSH_PROXY_HOST || '' }}
           proxy_username: ${{ matrix.use_proxy && secrets.VM_USER || '' }}
           proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
-          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,GRAFANA_PASSWORD,APP_HOST
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,GRAFANA_PASSWORD,APP_HOST,MONITORING_HOST
           script: |
             mkdir -p ~/legacyProject/${{ matrix.compose_dir }}
 
@@ -176,6 +178,7 @@ jobs:
               printf 'POSTGRES_DB=%s\n'                "$DB_NAME"
               printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "$GRAFANA_PASSWORD"
               printf 'APP_HOST=%s\n'                   "$APP_HOST"
+              printf 'MONITORING_HOST=%s\n'           "$MONITORING_HOST"
             } > ~/legacyProject/${{ matrix.compose_dir }}/.env
 
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
