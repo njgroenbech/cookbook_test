@@ -3,9 +3,9 @@
 # Full-Stack Azure Deployment Script (SHTF Recovery)
 # Creates four VMs in a shared VNet:
 #   - nginx VM       : public-facing, ports 22/80/443 open
-#   - app VM         : port 22 public, port 3000 accessible within VNet only
-#   - postgres VM    : private only, port 5432 accessible from app VM only (SSH via app VM jump)
-#   - monitoring VM  : private only, ports 9090/3001 accessible within VNet only (SSH via app VM jump)
+#   - app VM         : private only, port 3000 accessible within VNet only (SSH via nginx VM jump)
+#   - postgres VM    : private only, port 5432 accessible from app VM only (SSH via nginx VM jump)
+#   - monitoring VM  : private only, ports 9090/3001 accessible within VNet only (SSH via nginx VM jump)
 # Deploys the full application stack on each VM and sets all GitHub secrets.
 #
 # Usage: ./azure-setup.sh [--no-colors]
@@ -51,6 +51,7 @@ ADMIN_USERNAME="azureuser"
 SSH_KEY_PATH="$HOME/.ssh/azure_key.pub"
 VNET_NAME="recipe-cookbook-vnet"
 SUBNET_NAME="recipe-cookbook-subnet"
+NGINX_PUBLIC_IP_NAME="recipe-cookbook-nginx-public-ip"
 GITHUB_REPO="dendanskemetode/legacyproject"
 REMOTE_APP_DIR="/home/azureuser/legacyProject"
 
@@ -177,16 +178,7 @@ echo "Name: $RESOURCE_GROUP"
 echo "Location: $LOCATION"
 
 if az group exists --name "$RESOURCE_GROUP" | grep -q "true"; then
-    echo -e "${YELLOW}⚠️  Resource group already exists${NC}"
-    read -p "Do you want to delete and recreate it? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Deleting existing resource group..."
-        az group delete --name "$RESOURCE_GROUP" --yes
-        echo "Resource group deleted."
-    else
-        echo "Using existing resource group"
-    fi
+    echo -e "${GREEN}✅ Resource group already exists, reusing${NC}"
 fi
 
 if ! az group exists --name "$RESOURCE_GROUP" | grep -q "true"; then
@@ -224,6 +216,33 @@ else
 fi
 
 # ==========================================
+# Public IP (nginx)
+# ==========================================
+
+echo ""
+echo "=========================================="
+echo "Public IP (nginx)"
+echo "=========================================="
+
+if ! az network public-ip show \
+        --name "$NGINX_PUBLIC_IP_NAME" \
+        --resource-group "$RESOURCE_GROUP" &>/dev/null; then
+    az network public-ip create \
+        --name "$NGINX_PUBLIC_IP_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --sku Standard \
+        --allocation-method Static \
+        --output table
+    echo -e "${GREEN}✅ Static public IP created${NC}"
+else
+    EXISTING_IP=$(az network public-ip show \
+        --name "$NGINX_PUBLIC_IP_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --query ipAddress --output tsv)
+    echo -e "${GREEN}✅ Reusing existing public IP: $EXISTING_IP${NC}"
+fi
+
+# ==========================================
 # Create VMs
 # ==========================================
 
@@ -236,19 +255,22 @@ echo "Size: $VM_SIZE"
 echo "This may take 2-5 minutes..."
 echo ""
 
-az vm create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$NGINX_VM_NAME" \
-    --image "$VM_IMAGE" \
-    --size "$VM_SIZE" \
-    --admin-username "$ADMIN_USERNAME" \
-    --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
-    --vnet-name "$VNET_NAME" \
-    --subnet "$SUBNET_NAME" \
-    --public-ip-sku Standard \
-    --output table
-
-echo -e "${GREEN}✅ nginx VM created${NC}"
+if az vm show --resource-group "$RESOURCE_GROUP" --name "$NGINX_VM_NAME" &>/dev/null; then
+    echo -e "${GREEN}✅ nginx VM already exists, skipping${NC}"
+else
+    az vm create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$NGINX_VM_NAME" \
+        --image "$VM_IMAGE" \
+        --size "$VM_SIZE" \
+        --admin-username "$ADMIN_USERNAME" \
+        --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
+        --vnet-name "$VNET_NAME" \
+        --subnet "$SUBNET_NAME" \
+        --public-ip-address "$NGINX_PUBLIC_IP_NAME" \
+        --output table
+    echo -e "${GREEN}✅ nginx VM created${NC}"
+fi
 
 echo ""
 echo "=========================================="
@@ -259,19 +281,22 @@ echo "Size: $VM_SIZE"
 echo "This may take 2-5 minutes..."
 echo ""
 
-az vm create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$APP_VM_NAME" \
-    --image "$VM_IMAGE" \
-    --size "$VM_SIZE" \
-    --admin-username "$ADMIN_USERNAME" \
-    --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
-    --vnet-name "$VNET_NAME" \
-    --subnet "$SUBNET_NAME" \
-    --public-ip-sku Standard \
-    --output table
-
-echo -e "${GREEN}✅ app VM created${NC}"
+if az vm show --resource-group "$RESOURCE_GROUP" --name "$APP_VM_NAME" &>/dev/null; then
+    echo -e "${GREEN}✅ app VM already exists, skipping${NC}"
+else
+    az vm create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$APP_VM_NAME" \
+        --image "$VM_IMAGE" \
+        --size "$VM_SIZE" \
+        --admin-username "$ADMIN_USERNAME" \
+        --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
+        --vnet-name "$VNET_NAME" \
+        --subnet "$SUBNET_NAME" \
+        --public-ip-address "" \
+        --output table
+    echo -e "${GREEN}✅ app VM created${NC}"
+fi
 
 echo ""
 echo "=========================================="
@@ -282,19 +307,22 @@ echo "Size: $VM_SIZE"
 echo "This may take 2-5 minutes..."
 echo ""
 
-az vm create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$POSTGRES_VM_NAME" \
-    --image "$VM_IMAGE" \
-    --size "$VM_SIZE" \
-    --admin-username "$ADMIN_USERNAME" \
-    --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
-    --vnet-name "$VNET_NAME" \
-    --subnet "$SUBNET_NAME" \
-    --public-ip-address "" \
-    --output table
-
-echo -e "${GREEN}✅ postgres VM created${NC}"
+if az vm show --resource-group "$RESOURCE_GROUP" --name "$POSTGRES_VM_NAME" &>/dev/null; then
+    echo -e "${GREEN}✅ postgres VM already exists, skipping${NC}"
+else
+    az vm create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$POSTGRES_VM_NAME" \
+        --image "$VM_IMAGE" \
+        --size "$VM_SIZE" \
+        --admin-username "$ADMIN_USERNAME" \
+        --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
+        --vnet-name "$VNET_NAME" \
+        --subnet "$SUBNET_NAME" \
+        --public-ip-address "" \
+        --output table
+    echo -e "${GREEN}✅ postgres VM created${NC}"
+fi
 
 echo ""
 echo "=========================================="
@@ -305,19 +333,22 @@ echo "Size: $VM_SIZE"
 echo "This may take 2-5 minutes..."
 echo ""
 
-az vm create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$MONITORING_VM_NAME" \
-    --image "$VM_IMAGE" \
-    --size "$VM_SIZE" \
-    --admin-username "$ADMIN_USERNAME" \
-    --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
-    --vnet-name "$VNET_NAME" \
-    --subnet "$SUBNET_NAME" \
-    --public-ip-address "" \
-    --output table
-
-echo -e "${GREEN}✅ monitoring VM created${NC}"
+if az vm show --resource-group "$RESOURCE_GROUP" --name "$MONITORING_VM_NAME" &>/dev/null; then
+    echo -e "${GREEN}✅ monitoring VM already exists, skipping${NC}"
+else
+    az vm create \
+        --resource-group "$RESOURCE_GROUP" \
+        --name "$MONITORING_VM_NAME" \
+        --image "$VM_IMAGE" \
+        --size "$VM_SIZE" \
+        --admin-username "$ADMIN_USERNAME" \
+        --ssh-key-values "$(cat "$SSH_KEY_PATH")" \
+        --vnet-name "$VNET_NAME" \
+        --subnet "$SUBNET_NAME" \
+        --public-ip-address "" \
+        --output table
+    echo -e "${GREEN}✅ monitoring VM created${NC}"
+fi
 
 # ==========================================
 # Network security
@@ -565,13 +596,6 @@ NGINX_PRIVATE_IP=$(az vm show \
     --query privateIps \
     --output tsv)
 
-APP_PUBLIC_IP=$(az vm show \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$APP_VM_NAME" \
-    --show-details \
-    --query publicIps \
-    --output tsv)
-
 POSTGRES_PRIVATE_IP=$(az vm show \
     --resource-group "$RESOURCE_GROUP" \
     --name "$POSTGRES_VM_NAME" \
@@ -588,11 +612,11 @@ MONITORING_PRIVATE_IP=$(az vm show \
 
 echo ""
 echo -e "nginx VM      — Public IP  : ${GREEN}$NGINX_PUBLIC_IP${NC}"
-echo -e "app VM        — Public IP  : ${GREEN}$APP_PUBLIC_IP${NC}"
+echo -e "app VM        — Public IP  : (none — SSH via nginx VM jump)"
 echo -e "app VM        — Private IP : ${GREEN}$APP_PRIVATE_IP${NC}"
-echo    "postgres VM   — Public IP  : (none — SSH via app VM jump)"
+echo    "postgres VM   — Public IP  : (none — SSH via nginx VM jump)"
 echo -e "postgres VM   — Private IP : ${GREEN}$POSTGRES_PRIVATE_IP${NC}"
-echo    "monitoring VM — Public IP  : (none — SSH via app VM jump)"
+echo    "monitoring VM — Public IP  : (none — SSH via nginx VM jump)"
 echo -e "monitoring VM — Private IP : ${GREEN}$MONITORING_PRIVATE_IP${NC}"
 echo ""
 echo "nginx   → app        : $APP_PRIVATE_IP:3000"
@@ -660,9 +684,9 @@ setup_vm() {
 }
 
 setup_vm "$NGINX_PUBLIC_IP"      "nginx"
-setup_vm "$APP_PUBLIC_IP"        "app"
-setup_vm "$POSTGRES_PRIVATE_IP"  "postgres" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
-setup_vm "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+setup_vm "$APP_PRIVATE_IP"       "app"       "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+setup_vm "$POSTGRES_PRIVATE_IP"  "postgres"  "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+setup_vm "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
 # ==========================================
 # Install Docker on all VMs
@@ -734,10 +758,10 @@ ENDSSH
     echo -e "${GREEN}✅ Docker installed on $VM_LABEL VM${NC}"
 }
 
-install_docker "$NGINX_PUBLIC_IP"      "nginx"      "nginx"
-install_docker "$APP_PUBLIC_IP"        "app"        "app"
-install_docker "$POSTGRES_PRIVATE_IP"  "postgres"   "postgres"  "$ADMIN_USERNAME@$APP_PUBLIC_IP"
-install_docker "$MONITORING_PRIVATE_IP" "monitoring" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+install_docker "$NGINX_PUBLIC_IP"       "nginx"      "nginx"
+install_docker "$APP_PRIVATE_IP"        "app"        "app"       "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+install_docker "$POSTGRES_PRIVATE_IP"   "postgres"   "postgres"  "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+install_docker "$MONITORING_PRIVATE_IP" "monitoring" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
 echo -e "${YELLOW}⚠️  Note: docker group changes require re-login; all docker commands below use sudo${NC}"
 
@@ -778,8 +802,8 @@ ENDSSH
 }
 
 install_node_exporter "$NGINX_PUBLIC_IP"     "nginx"
-install_node_exporter "$APP_PUBLIC_IP"       "app"
-install_node_exporter "$POSTGRES_PRIVATE_IP" "postgres" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+install_node_exporter "$APP_PRIVATE_IP"      "app"      "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+install_node_exporter "$POSTGRES_PRIVATE_IP" "postgres" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
 # ==========================================
 # Clone repo on all VMs
@@ -802,7 +826,7 @@ clone_repo() {
         set -e
         if [ -d '$REMOTE_APP_DIR/.git' ]; then
             echo 'Repo already present, pulling latest...'
-            cd '$REMOTE_APP_DIR' && git pull
+            cd '$REMOTE_APP_DIR' && git fetch origin && git reset --hard origin/HEAD
         else
             git clone '$GIT_CLONE_URL' '$REMOTE_APP_DIR'
         fi
@@ -811,10 +835,10 @@ clone_repo() {
     echo -e "${GREEN}✅ Repo cloned on $VM_LABEL VM${NC}"
 }
 
-clone_repo "$NGINX_PUBLIC_IP"      "nginx"
-clone_repo "$APP_PUBLIC_IP"        "app"
-clone_repo "$POSTGRES_PRIVATE_IP"  "postgres"   "$ADMIN_USERNAME@$APP_PUBLIC_IP"
-clone_repo "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$APP_PUBLIC_IP"
+clone_repo "$NGINX_PUBLIC_IP"       "nginx"
+clone_repo "$APP_PRIVATE_IP"        "app"        "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+clone_repo "$POSTGRES_PRIVATE_IP"   "postgres"   "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
+clone_repo "$MONITORING_PRIVATE_IP" "monitoring" "$ADMIN_USERNAME@$NGINX_PUBLIC_IP"
 
 # ==========================================
 # Deploy postgres VM
@@ -828,7 +852,7 @@ echo "=========================================="
 SSH_KEY="${SSH_KEY_PATH%.pub}"
 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
     "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/database
@@ -860,7 +884,7 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
-        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
+        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
         "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" \
         "sudo docker exec recipe_app_postgres pg_isready -U $DB_USER -d $DB_NAME" 2>/dev/null; then
         echo -e "${GREEN}✅ PostgreSQL is ready${NC}"
@@ -884,7 +908,8 @@ echo "Deploying Backend"
 echo "=========================================="
 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
-    "$ADMIN_USERNAME@$APP_PUBLIC_IP" << ENDSSH
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+    "$ADMIN_USERNAME@$APP_PRIVATE_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/app
 
@@ -924,7 +949,8 @@ ATTEMPT=0
 while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
     ATTEMPT=$((ATTEMPT + 1))
     APP_READY_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
-        "$ADMIN_USERNAME@$APP_PUBLIC_IP" \
+        -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+        "$ADMIN_USERNAME@$APP_PRIVATE_IP" \
         "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/" 2>/dev/null || echo "000")
     APP_READY_STATUS="${APP_READY_STATUS:-000}"
     if [[ "$APP_READY_STATUS" =~ ^[23] ]]; then
@@ -984,7 +1010,7 @@ echo "Deploying Monitoring (Prometheus + Grafana)"
 echo "=========================================="
 
 ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=30 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
     "$ADMIN_USERNAME@$MONITORING_PRIVATE_IP" << ENDSSH
 set -e
 cd $REMOTE_APP_DIR/monitoring
@@ -1038,7 +1064,7 @@ echo "=========================================="
 # 1. Postgres
 echo -n "PostgreSQL reachable... "
 if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
-    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$APP_PUBLIC_IP" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
     "$ADMIN_USERNAME@$POSTGRES_PRIVATE_IP" \
     "sudo docker exec recipe_app_postgres pg_isready -U $DB_USER -d $DB_NAME" 2>/dev/null; then
     echo -e "${GREEN}✅ OK${NC}"
@@ -1049,7 +1075,8 @@ fi
 # 2. Backend (curl from within the app VM so we don't need cross-VM routing for the check)
 echo -n "Backend responding (2xx/3xx)... "
 APP_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i "$SSH_KEY" \
-    "$ADMIN_USERNAME@$APP_PUBLIC_IP" \
+    -o "ProxyCommand=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -i '$SSH_KEY' -W %h:%p $ADMIN_USERNAME@$NGINX_PUBLIC_IP" \
+    "$ADMIN_USERNAME@$APP_PRIVATE_IP" \
     "curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/"; true)
 APP_STATUS="${APP_STATUS:-000}"
 if [[ "$APP_STATUS" =~ ^[23] ]]; then
@@ -1086,9 +1113,9 @@ if ! command -v gh &> /dev/null; then
     echo ""
     echo "  VM_USER               = $ADMIN_USERNAME"
     echo "  SSH_HOST_NGINX        = $NGINX_PUBLIC_IP"
-    echo "  SSH_HOST_APP          = $APP_PUBLIC_IP"
-    echo "  SSH_HOST_POSTGRES     = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_APP)"
-    echo "  SSH_HOST_MONITORING   = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_APP)"
+    echo "  SSH_HOST_APP          = $APP_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+    echo "  SSH_HOST_POSTGRES     = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+    echo "  SSH_HOST_MONITORING   = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
     echo "  SSH_PROXY_HOST        = $NGINX_PUBLIC_IP"
     echo "  AZURE_KEY             = (contents of ${SSH_KEY_PATH%.pub})"
     echo "  DB_HOST               = $POSTGRES_PRIVATE_IP"
@@ -1107,7 +1134,7 @@ else
 
     echo "$ADMIN_USERNAME"       | gh secret set VM_USER
     echo "$NGINX_PUBLIC_IP"      | gh secret set SSH_HOST_NGINX
-    echo "$APP_PUBLIC_IP"        | gh secret set SSH_HOST_APP
+    echo "$APP_PRIVATE_IP"       | gh secret set SSH_HOST_APP
     echo "$POSTGRES_PRIVATE_IP"  | gh secret set SSH_HOST_POSTGRES
     echo "$MONITORING_PRIVATE_IP" | gh secret set SSH_HOST_MONITORING
     echo "$NGINX_PUBLIC_IP"      | gh secret set SSH_PROXY_HOST
@@ -1140,19 +1167,19 @@ echo    "  Ports open : 22, 80, 443"
 echo ""
 echo "app VM"
 echo -e "  Name        : ${GREEN}$APP_VM_NAME${NC}"
-echo -e "  Public IP   : ${GREEN}$APP_PUBLIC_IP${NC}"
+echo    "  Public IP   : (none — SSH via nginx VM jump)"
 echo -e "  Private IP  : ${GREEN}$APP_PRIVATE_IP${NC}"
-echo    "  Ports open  : 22 (public), 3000 (VNet only)"
+echo    "  Ports open  : 22 (VNet only), 3000 (VNet only)"
 echo ""
 echo "postgres VM"
 echo -e "  Name        : ${GREEN}$POSTGRES_VM_NAME${NC}"
-echo    "  Public IP   : (none — SSH via app VM jump)"
+echo    "  Public IP   : (none — SSH via nginx VM jump)"
 echo -e "  Private IP  : ${GREEN}$POSTGRES_PRIVATE_IP${NC}"
 echo    "  Ports open  : 22 (VNet only), 5432 (app VM only)"
 echo ""
 echo "monitoring VM"
 echo -e "  Name        : ${GREEN}$MONITORING_VM_NAME${NC}"
-echo    "  Public IP   : (none — SSH via app VM jump)"
+echo    "  Public IP   : (none — SSH via nginx VM jump)"
 echo -e "  Private IP  : ${GREEN}$MONITORING_PRIVATE_IP${NC}"
 echo    "  Ports open  : 22 (VNet only), 9090/3001 (VNet only)"
 echo ""
@@ -1161,9 +1188,9 @@ echo "GitHub Secrets:"
 echo "=========================================="
 echo "  VM_USER             = $ADMIN_USERNAME"
 echo "  SSH_HOST_NGINX      = $NGINX_PUBLIC_IP"
-echo "  SSH_HOST_APP        = $APP_PUBLIC_IP"
-echo "  SSH_HOST_POSTGRES   = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_APP)"
-echo "  SSH_HOST_MONITORING = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_APP)"
+echo "  SSH_HOST_APP        = $APP_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+echo "  SSH_HOST_POSTGRES   = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+echo "  SSH_HOST_MONITORING = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
 echo "  SSH_PROXY_HOST      = $NGINX_PUBLIC_IP"
 echo "  AZURE_KEY           = (from ${SSH_KEY_PATH%.pub})"
 echo ""
@@ -1174,16 +1201,16 @@ echo ""
 echo -e "  ${GREEN}http://$NGINX_PUBLIC_IP/${NC}"
 echo ""
 echo "SSH access:"
-echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}                                                       (nginx)"
-echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}                                                          (app)"
-echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$POSTGRES_PRIVATE_IP${NC}    (postgres via app jump)"
-echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$APP_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC}  (monitoring via app jump)"
+echo -e "  ${YELLOW}ssh $ADMIN_USERNAME@$NGINX_PUBLIC_IP${NC}                                                              (nginx)"
+echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$APP_PRIVATE_IP${NC}        (app via nginx jump)"
+echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$POSTGRES_PRIVATE_IP${NC}   (postgres via nginx jump)"
+echo -e "  ${YELLOW}ssh -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC} (monitoring via nginx jump)"
 echo ""
 echo "Grafana (publicly proxied through nginx):"
 echo -e "  ${GREEN}http://$NGINX_PUBLIC_IP/grafana/${NC}"
 echo ""
-echo "Grafana (alternative — SSH tunnel via app VM jump):"
-echo -e "  ${YELLOW}ssh -L 3001:$MONITORING_PRIVATE_IP:3001 $ADMIN_USERNAME@$APP_PUBLIC_IP${NC}"
+echo "Grafana (alternative — SSH tunnel via nginx VM jump):"
+echo -e "  ${YELLOW}ssh -L 3001:$MONITORING_PRIVATE_IP:3001 -J $ADMIN_USERNAME@$NGINX_PUBLIC_IP $ADMIN_USERNAME@$MONITORING_PRIVATE_IP${NC}"
 echo    "  Then open: http://localhost:3001/"
 echo ""
 echo "=========================================="

@@ -51,77 +51,56 @@ if ! az group exists --name "$RESOURCE_GROUP" | grep -q "true"; then
     echo -e "${YELLOW}⚠️  Resource group '$RESOURCE_GROUP' does not exist${NC}"
     echo "Nothing to delete."
     exit 0
-fi
 
-# Show what will be deleted
-echo "=========================================="
-echo "Resources to be deleted:"
-echo "=========================================="
-echo ""
-az resource list --resource-group "$RESOURCE_GROUP" --output table
-echo ""
+fi 
 
-# Confirmation prompt
-echo -e "${RED}⚠️  WARNING: This will permanently delete all resources in '$RESOURCE_GROUP'${NC}"
-echo ""
-read -p "Are you sure you want to continue? (yes/NO): " -r
-echo
+# Delete VMs
 
-if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
-    echo "Teardown cancelled."
-    exit 0
-fi
+az vm delete \
+  --resource-group "$RESOURCE_GROUP" \
+  --name recipe-cookbook-nginx-vm \
+  --yes
 
-# Double confirmation for safety
-echo ""
-echo -e "${RED}⚠️  FINAL CONFIRMATION${NC}"
-read -p "Type the resource group name '$RESOURCE_GROUP' to confirm deletion: " -r
-echo
+# app VM
+az vm delete \
+  --resource-group "$RESOURCE_GROUP" \
+  --name recipe-cookbook-app-vm \
+  --yes
 
-if [[ $REPLY != "$RESOURCE_GROUP" ]]; then
-    echo -e "${RED}❌ Resource group name doesn't match. Teardown cancelled.${NC}"
-    exit 1
-fi
+# database VM
+az vm delete \
+  --resource-group "$RESOURCE_GROUP" \
+  --name recipe-cookbook-postgres-vm \
+  --yes
 
-# Delete resource group
-echo ""
-echo "=========================================="
-echo "Deleting Resource Group"
-echo "=========================================="
-echo "Resource Group: $RESOURCE_GROUP"
-echo "This may take several minutes..."
-echo ""
+# monitor VM
+az vm delete \
+  --resource-group "$RESOURCE_GROUP" \
+  --name recipe-cookbook-monitoring-vm \
+  --yes
 
-az group delete \
-    --name "$RESOURCE_GROUP" \
-    --yes \
-    --no-wait
+# Delete network interface  
+az network nic delete --resource-group "$RESOURCE_GROUP" --name recipe-cookbook-monitoring-vmVMNic
+az network nic delete --resource-group "$RESOURCE_GROUP" --name recipe-cookbook-postgres-vmVMNic
+az network nic delete --resource-group "$RESOURCE_GROUP" --name recipe-cookbook-nginx-vmVMNic
+az network nic delete --resource-group "$RESOURCE_GROUP" --name recipe-cookbook-app-vmVMNic
 
-echo -e "${GREEN}✅ Deletion initiated${NC}"
-echo ""
-echo "The resource group is being deleted in the background."
-echo "You can check the status with:"
-echo "   ${YELLOW}az group exists --name $RESOURCE_GROUP${NC}"
-echo ""
-echo "Or wait for completion with:"
-echo "   ${YELLOW}az group wait --name $RESOURCE_GROUP --deleted${NC}"
-echo ""
+# Delete disks
+echo "Finding and deleting all disks in $RESOURCE_GROUP..."
 
-# Optional: Wait for deletion to complete
-read -p "Do you want to wait for deletion to complete? (y/N): " -n 1 -r
-echo
+for disk_id in $(az disk list --resource-group "$RESOURCE_GROUP" --query "[].id" --output tsv); do
+    echo "Deleting disk: $disk_id"
+    MSYS_NO_PATHCONV=1 az disk delete --ids "$disk_id" --yes --no-wait
+done
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "Waiting for deletion to complete..."
-    if az group wait --name "$RESOURCE_GROUP" --deleted --timeout 300; then
-        echo -e "${GREEN}✅ Resource group successfully deleted${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Deletion is taking longer than expected${NC}"
-        echo "Check status in Azure Portal or run:"
-        echo "   az group exists --name $RESOURCE_GROUP"
-    fi
-fi
+# Delete NSG's
+az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-nginx-vmNSG"
+az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-postgres-vmNSG"
+az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-monitoring-vmNSG"
+az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-app-vmNSG"
+
+# Delete entire VNET
+az network vnet delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-vnet"
 
 echo ""
 echo "=========================================="

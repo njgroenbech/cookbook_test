@@ -67,9 +67,21 @@
 
 <!-- Ingredients panel -->
 <div id="panel-ingredients" class="admin-panel">
-    <div class="admin-card">
-        <h3>All Ingredients <button class="btn btn-sm btn-secondary" onclick="loadIngredients()" style="margin-left:0.5rem">Refresh</button></h3>
-        <div id="ingredients-table"><p class="loading">Loading…</p></div>
+    <div class="admin-grid">
+        <div class="admin-card">
+            <h3>All Ingredients <button class="btn btn-sm btn-secondary" onclick="loadIngredients()" style="margin-left:0.5rem">Refresh</button></h3>
+            <div id="ingredients-table"><p class="loading">Loading…</p></div>
+        </div>
+        <div class="admin-card">
+            <h3>Add Ingredient</h3>
+            <form onsubmit="createIngredient(event)">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="i-name" required placeholder="e.g. Olive Oil">
+                </div>
+                <button type="submit" class="btn btn-primary">Add Ingredient</button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -228,6 +240,20 @@ async function createRecipe(e) {
         e.target.reset();
         loadTagCheckboxes();
         loadRecipes();
+    }
+}
+
+async function createIngredient(e) {
+    e.preventDefault();
+    const payload = { name: document.getElementById('i-name').value.trim() };
+    const { ok } = await apiFetch('/api/recipe/ingredients/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (ok) {
+        e.target.reset();
+        loadIngredients();
     }
 }
 
