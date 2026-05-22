@@ -243,17 +243,18 @@ jobs:
           fi
           if [ -n "$WEBHOOK" ]; then
             TEXT="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} — [View run](${RUN_URL})${BRANCH_LINE}"
-            if [ "$STATUS" = "failure" ]; then
-              GIF=""
-              if [ -n "$GIPHY_KEY" ]; then
+            GIF=""
+            if [ -n "$GIPHY_KEY" ]; then
+              if [ "$STATUS" = "failure" ]; then
                 GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=fail&rating=g" \
                       | jq -r '.data.images.original.url // empty')
-              fi
-              if [ -n "$GIF" ]; then
-                PAYLOAD="{\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
               else
-                PAYLOAD="{\"content\":\"${TEXT}\"}"
+                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=success+celebration&rating=g" \
+                      | jq -r '.data.images.original.url // empty')
               fi
+            fi
+            if [ -n "$GIF" ]; then
+              PAYLOAD="{\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
             else
               PAYLOAD="{\"content\":\"${TEXT}\"}"
             fi
