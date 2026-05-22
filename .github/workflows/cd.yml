@@ -152,8 +152,8 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
           GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
-          APP_HOST: ${{ secrets.APP_PRIVATE_IP }}
-          MONITORING_HOST: ${{ secrets.MONITORING_PRIVATE_IP }}
+          APP_HOST: ${{ secrets.SSH_HOST_APP }}
+          MONITORING_HOST: ${{ secrets.SSH_HOST_MONITORING }}
         with:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}

@@ -97,7 +97,7 @@ done
 az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-nginx-vmNSG"
 az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-postgres-vmNSG"
 az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-monitoring-vmNSG"
-az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-app-vmNSG"
+az network nsg delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-app-vmNSG"  
 
 # Delete entire VNET
 az network vnet delete --resource-group "$RESOURCE_GROUP" --name "recipe-cookbook-vnet"
