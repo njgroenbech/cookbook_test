@@ -125,6 +125,7 @@ jobs:
           proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
           source: "${{ matrix.compose_dir }}/docker-compose.yaml"
           target: "~/legacyProject/${{ matrix.compose_dir }}/"
+          strip_components: 1
 
       # prometheus.yml is a runtime config file that must live alongside the compose file
       - name: Copy prometheus.yml to monitoring VM
@@ -139,6 +140,7 @@ jobs:
           proxy_key: ${{ secrets.AZURE_KEY }}
           source: "monitoring/prometheus.yml"
           target: "~/legacyProject/monitoring/"
+          strip_components: 1
 
       - name: Deploy to ${{ matrix.name }} VM
         uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
