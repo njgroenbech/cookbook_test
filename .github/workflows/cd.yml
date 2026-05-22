@@ -225,6 +225,8 @@ jobs:
       # Notify via Discord webhook if DISCORD_WEBHOOK_URL secret is configured; silently skipped otherwise.
       # On failure, fetches a random GIF from Giphy (requires GIPHY_API_KEY secret).
       - name: Notify deployment status
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           STATUS="${{ needs.deploy.result }}"
           SHA="${{ github.sha }}"
@@ -233,8 +235,14 @@ jobs:
           RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           WEBHOOK="${{ secrets.DISCORD_WEBHOOK_URL }}"
           GIPHY_KEY="${{ secrets.GIPHY_API_KEY }}"
+          SOURCE_BRANCH=$(echo "$COMMIT_MSG" | head -1 | sed -n 's/Merge pull request #[0-9]* from [^/]*\/\(.*\)/\1/p')
+          if [ -n "$SOURCE_BRANCH" ]; then
+            BRANCH_LINE="\n\`${SOURCE_BRANCH}\` → \`${BRANCH}\`"
+          else
+            BRANCH_LINE=""
+          fi
           if [ -n "$WEBHOOK" ]; then
-            MSG="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} on \`${BRANCH}\`\n[View run](${RUN_URL})"
+            TEXT="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} — [View run](${RUN_URL})${BRANCH_LINE}"
             if [ "$STATUS" = "failure" ]; then
               GIF=""
               if [ -n "$GIPHY_KEY" ]; then
@@ -242,17 +250,14 @@ jobs:
                       | jq -r '.data.images.original.url // empty')
               fi
               if [ -n "$GIF" ]; then
-                curl -s -X POST "$WEBHOOK" \
-                  -H "Content-Type: application/json" \
-                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\",\"image\":{\"url\":\"${GIF}\"}}]}"
+                PAYLOAD="{\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
               else
-                curl -s -X POST "$WEBHOOK" \
-                  -H "Content-Type: application/json" \
-                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\"}]}"
+                PAYLOAD="{\"content\":\"${TEXT}\"}"
               fi
             else
-              curl -s -X POST "$WEBHOOK" \
-                -H "Content-Type: application/json" \
-                -d "{\"embeds\":[{\"color\":3066993,\"description\":\"${MSG}\"}]}"
+              PAYLOAD="{\"content\":\"${TEXT}\"}"
             fi
+            curl -s -X POST "$WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD"
           fi
