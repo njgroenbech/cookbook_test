@@ -324,6 +324,36 @@ func recipeIngredientsHandler(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(ingredients)
 }
 
+// recipeIngredientsCreateHandler creates a new ingredient and returns it.
+// Route: POST /api/recipe/ingredients/
+func recipeIngredientsCreateHandler(w http.ResponseWriter, r *http.Request) {
+    log.Printf("Route invoked: POST /api/recipe/ingredients/")
+
+    var req struct {
+        Name string `json:"name"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    var id int
+    err := db.QueryRow(
+        "INSERT INTO ingredients (name) VALUES ($1) RETURNING id",
+        req.Name,
+    ).Scan(&id)
+    if err != nil {
+        log.Printf("Failed to create ingredient: %v", err)
+        http.Error(w, "Failed to create ingredient", http.StatusInternalServerError)
+        return
+    }
+
+    ing := Ingredient{ID: id, Name: req.Name}
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusCreated)
+    json.NewEncoder(w).Encode(ing)
+}
+
 // adminHandler serves the database test panel.
 // Route: GET /admin
 func adminHandler(w http.ResponseWriter, r *http.Request) {

@@ -89,6 +89,7 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - name: app
@@ -125,6 +126,7 @@ jobs:
           proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
           source: "${{ matrix.compose_dir }}/docker-compose.yaml"
           target: "~/legacyProject/${{ matrix.compose_dir }}/"
+          strip_components: 1
 
       # prometheus.yml is a runtime config file that must live alongside the compose file
       - name: Copy prometheus.yml to monitoring VM
@@ -139,6 +141,7 @@ jobs:
           proxy_key: ${{ secrets.AZURE_KEY }}
           source: "monitoring/prometheus.yml"
           target: "~/legacyProject/monitoring/"
+          strip_components: 1
 
       - name: Deploy to ${{ matrix.name }} VM
         uses: appleboy/ssh-action@v1.0.3 # TODO: pin to commit SHA
@@ -150,6 +153,7 @@ jobs:
           DB_NAME: ${{ secrets.DB_NAME }}
           GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
           APP_HOST: ${{ secrets.APP_PRIVATE_IP }}
+          MONITORING_HOST: ${{ secrets.MONITORING_PRIVATE_IP }}
         with:
           host: ${{ secrets[matrix.host_secret] }}
           username: ${{ secrets.VM_USER }}
@@ -157,7 +161,7 @@ jobs:
           proxy_host: ${{ matrix.use_proxy && secrets.SSH_PROXY_HOST || '' }}
           proxy_username: ${{ matrix.use_proxy && secrets.VM_USER || '' }}
           proxy_key: ${{ matrix.use_proxy && secrets.AZURE_KEY || '' }}
-          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,GRAFANA_PASSWORD,APP_HOST
+          envs: DB_HOST,DB_PORT,DB_USER,DB_PASSWORD,DB_NAME,GRAFANA_PASSWORD,APP_HOST,MONITORING_HOST
           script: |
             mkdir -p ~/legacyProject/${{ matrix.compose_dir }}
 
@@ -174,6 +178,7 @@ jobs:
               printf 'POSTGRES_DB=%s\n'                "$DB_NAME"
               printf 'GF_SECURITY_ADMIN_PASSWORD=%s\n' "$GRAFANA_PASSWORD"
               printf 'APP_HOST=%s\n'                   "$APP_HOST"
+              printf 'MONITORING_HOST=%s\n'           "$MONITORING_HOST"
             } > ~/legacyProject/${{ matrix.compose_dir }}/.env
 
             sudo docker login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
@@ -202,7 +207,7 @@ jobs:
             fi
 
   promote-and-notify:
-    if: always() && github.event_name != 'pull_request'
+    if: always() && github.event_name != 'pull_request' && needs.deploy.result != 'skipped'
     needs: deploy
     runs-on: ubuntu-latest
     permissions:
@@ -223,14 +228,36 @@ jobs:
           docker push ghcr.io/dendanskemetode/legacyproject-nginx:latest-stable
 
       # Notify via Discord webhook if DISCORD_WEBHOOK_URL secret is configured; silently skipped otherwise.
+      # On failure, fetches a random GIF from Giphy (requires GIPHY_API_KEY secret).
       - name: Notify deployment status
         run: |
           STATUS="${{ needs.deploy.result }}"
           SHA="${{ github.sha }}"
           ACTOR="${{ github.actor }}"
+          BRANCH="${{ github.ref_name }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           WEBHOOK="${{ secrets.DISCORD_WEBHOOK_URL }}"
+          GIPHY_KEY="${{ secrets.GIPHY_API_KEY }}"
           if [ -n "$WEBHOOK" ]; then
-            curl -s -X POST "$WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -d "{\"content\":\"Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR}\"}"
+            MSG="Deploy **${STATUS}** — \`${SHA:0:7}\` by ${ACTOR} on \`${BRANCH}\`\n[View run](${RUN_URL})"
+            if [ "$STATUS" = "failure" ]; then
+              GIF=""
+              if [ -n "$GIPHY_KEY" ]; then
+                GIF=$(curl -s "https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_KEY}&tag=fail&rating=g" \
+                      | jq -r '.data.images.original.url // empty')
+              fi
+              if [ -n "$GIF" ]; then
+                curl -s -X POST "$WEBHOOK" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\",\"image\":{\"url\":\"${GIF}\"}}]}"
+              else
+                curl -s -X POST "$WEBHOOK" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"embeds\":[{\"color\":15158332,\"description\":\"${MSG}\"}]}"
+              fi
+            else
+              curl -s -X POST "$WEBHOOK" \
+                -H "Content-Type: application/json" \
+                -d "{\"embeds\":[{\"color\":3066993,\"description\":\"${MSG}\"}]}"
+            fi
           fi
