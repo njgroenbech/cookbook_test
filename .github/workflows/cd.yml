@@ -264,8 +264,9 @@ jobs:
                       | jq -r '.data.images.original.url // empty')
               fi
             fi
+            if [ "$STATUS" = "failure" ]; then COLOR=15158332; else COLOR=3066993; fi
             if [ -n "$GIF" ]; then
-              PAYLOAD="{\"username\":\"${BOT_NAME}\",\"content\":\"${TEXT}\",\"embeds\":[{\"image\":{\"url\":\"${GIF}\"}}]}"
+              PAYLOAD="{\"username\":\"${BOT_NAME}\",\"content\":\"${TEXT}\",\"embeds\":[{\"color\":${COLOR},\"image\":{\"url\":\"${GIF}\"}}]}"
             else
               PAYLOAD="{\"username\":\"${BOT_NAME}\",\"content\":\"${TEXT}\"}"
             fi
