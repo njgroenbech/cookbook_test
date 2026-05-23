@@ -128,6 +128,18 @@ jobs:
           target: "~/legacyProject/${{ matrix.compose_dir }}/"
           strip_components: 1
 
+      # prometheus.yml ships as a template with ${VAR} placeholders so the scrape
+      # targets stay out of the repo. Render it on the runner before scp.
+      - name: Render prometheus.yml
+        if: matrix.name == 'monitoring'
+        env:
+          APP_HOST: ${{ secrets.SSH_HOST_APP }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          NGINX_PRIVATE_HOST: ${{ secrets.SSH_HOST_NGINX_PRIVATE }}
+        run: |
+          envsubst < monitoring/prometheus.yml > monitoring/prometheus.rendered.yml
+          mv monitoring/prometheus.rendered.yml monitoring/prometheus.yml
+
       # prometheus.yml is a runtime config file that must live alongside the compose file
       - name: Copy prometheus.yml to monitoring VM
         if: matrix.name == 'monitoring'
