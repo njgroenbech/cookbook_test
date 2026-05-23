@@ -14,7 +14,7 @@
 
 Run once to provision infrastructure. **Not a deployment script** — containers are deployed by GitHub Actions on every push.
 
-1. Creates resource group `recipe-cookbook-backup` and a shared VNet in `norwayeast`
+1. Creates resource group `recipe-cookbook-backup` and a shared VNet (`10.0.0.0/16`) in `norwayeast`
 2. Provisions four VMs (all `Standard_B1s`, Ubuntu 22.04):
    - **nginx VM** — public IP, ports 22/80/443 open
    - **app VM** — no public IP, port 3000 reachable within VNet only
@@ -22,16 +22,16 @@ Run once to provision infrastructure. **Not a deployment script** — containers
    - **monitoring VM** — no public IP, ports 9090/3001 reachable within VNet only
 3. Generates random DB credentials and Grafana admin password
 4. Prompts for a GHCR token (or reads from `gh auth token`) and an optional GitHub PAT for cloning
-5. Installs Docker on all four VMs and clones the repo
-6. Deploys PostgreSQL → waits for it to be ready → deploys the Go app → deploys nginx → deploys Prometheus + Grafana
+5. Installs Docker on all four VMs; installs node_exporter (port 9100) on nginx, app, and postgres VMs; clones the repo on all VMs
+6. Deploys PostgreSQL → waits for it to be ready → deploys the Go app → deploys nginx → deploys Prometheus + Grafana (with generated `prometheus.yml` scraping app and all node_exporter targets)
 7. Runs a quick end-to-end check (postgres, backend HTTP, nginx public IP)
 8. Sets GitHub Actions secrets via `gh secret set` (or prints them for manual entry)
 
-GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_APP`, `SSH_PROXY_HOST`, `AZURE_KEY`, `SSH_HOST_POSTGRES`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
+GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_APP`, `SSH_HOST_POSTGRES`, `SSH_HOST_MONITORING`, `SSH_PROXY_HOST`, `AZURE_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
 
 ## What `azure-teardown.sh` does
 
-Deletes the entire `recipe-cookbook-backup` resource group (all four VMs, the VNet, disks, NICs, NSGs, public IP). Requires typing the resource group name to confirm. Deletion runs in the background via `--no-wait`; optionally waits up to 5 minutes for completion.
+Deletes all resources in `recipe-cookbook-backup` in order: VMs → NICs → disks (background, `--no-wait`) → NSGs → VNet. Non-interactive — no confirmation prompt.
 
 ## Usage
 
