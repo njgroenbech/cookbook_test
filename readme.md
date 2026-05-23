@@ -1,4 +1,10 @@
-# Legacy Project (This readme needs to be updated)
+# Legacy Project
+
+[![CI](https://github.com/DenDanskeMetode/legacyProject/actions/workflows/ci.yml/badge.svg)](https://github.com/DenDanskeMetode/legacyProject/actions/workflows/ci.yml)
+[![CD](https://github.com/DenDanskeMetode/legacyProject/actions/workflows/cd.yml/badge.svg)](https://github.com/DenDanskeMetode/legacyProject/actions/workflows/cd.yml)
+[![Go](https://img.shields.io/badge/Go-1.26.3-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Coverage](https://img.shields.io/badge/coverage-%E2%89%A580%25_enforced-brightgreen)](https://github.com/DenDanskeMetode/legacyProject/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/badge/image-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/DenDanskeMetode/legacyProject/pkgs/container/legacyproject)
 
 This is a Docker-based Go application with monitoring capabilities.
 

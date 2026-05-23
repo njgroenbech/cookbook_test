@@ -65,7 +65,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | 5.2 | Dockerfile linting | MANDATORY | ✅ `hadolint` runs in `ci.yml` |
 | 5.3 | Vulnerability scan for Go dependencies | MANDATORY | ✅ `govulncheck` runs in `ci.yml` |
 | 5.4 | Container image vulnerability scan | MANDATORY | ✅ Trivy in `cd.yml` (CRITICAL/HIGH CVEs block deploy) |
-| 5.5 | README badges (build status, coverage, etc.) | MANDATORY | ❌ No badges in `readme.md` |
+| 5.5 | README badges (build status, coverage, etc.) | MANDATORY | ✅ CI, CD, Go version, coverage threshold, Docker image badges in `readme.md` |
 | 5.6 | SonarQube / Code Climate | OPTIONAL | ❌ Not configured |
 
 ---
@@ -183,7 +183,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 
 ### High priority (clearly missing, add to Kanban backlog)
 2. **❌ 7.1/7.2 — Pre-commit hooks**: add `.pre-commit-config.yaml` running `go vet` + tests before every commit
-3. **❌ 5.5 — README badges**: add CI status and coverage badges to `readme.md`
+
 
 ### Medium priority (needs verification or small fixes)
 4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
