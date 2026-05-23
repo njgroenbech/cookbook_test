@@ -51,7 +51,7 @@ jobs:
           go test -tags integration -race -coverprofile=coverage.out ./...
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{gsub(/%/,""); print $3}')
           echo "Total coverage: ${COVERAGE}%"
-          awk -v c="$COVERAGE" 'BEGIN { if (c+0 < 30) { print "Coverage " c "% is below the 30% minimum threshold"; exit 1 } }'
+          awk -v c="$COVERAGE" 'BEGIN { if (c+0 < 80) { print "Coverage " c "% is below the 80% minimum threshold"; exit 1 } }'
 
       - name: Check for known vulnerabilities
         working-directory: ./app

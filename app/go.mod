@@ -3,6 +3,7 @@ module hello/app
 go 1.26.3
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/lib/pq v1.10.9
 	github.com/prometheus/client_golang v1.23.2
 )
