@@ -88,16 +88,12 @@ func apiOverviewHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     routes := map[string]string{
-        "create_user_url":  "http://localhost:3000/api/user/create/",
-        "current_user_url": "http://localhost:3000/api/user/me/",
-        "user_token_url":   "http://localhost:3000/api/user/token/",
-        "recipes_url":      "http://localhost:3000/api/recipe/recipes/{?ingredients,tags}",
-        "recipe_url":       "http://localhost:3000/api/recipe/recipes/{id}/",
-        "recipe_image_url": "http://localhost:3000/api/recipe/recipes/{id}/upload-image/",
-        "ingredients_url":  "http://localhost:3000/api/recipe/ingredients/{?assigned_only}",
-        "ingredient_url":   "http://localhost:3000/api/recipe/ingredients/{id}/",
-        "tags_url":         "http://localhost:3000/api/recipe/tags/{?assigned_only}",
-        "tag_url":          "http://localhost:3000/api/recipe/tags/{id}/",
+        "create_user_url":  "/api/user/create/",
+        "current_user_url": "/api/user/me/",
+        "user_token_url":   "/api/user/token/",
+        "recipes_url":      "/api/recipe/recipes/",
+        "ingredients_url":  "/api/recipe/ingredients/",
+        "tags_url":         "/api/recipe/tags/",
     }
 
     w.Header().Set("Content-Type", "application/json")
