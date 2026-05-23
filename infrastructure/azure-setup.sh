@@ -988,8 +988,8 @@ ENVEOF
 echo "Authenticating to GHCR..."
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u github-token --password-stdin
 
-echo "Removing any existing containers and stale images..."
-sudo docker ps -aq | xargs -r sudo docker rm -f 2>/dev/null || true
+echo "Removing any existing compose containers and stale nginx images..."
+sudo docker compose down --remove-orphans 2>/dev/null || true
 sudo docker rmi legacyproject-nginx legacyproject-nginx:latest 2>/dev/null || true
 
 echo "Pulling and starting nginx container..."
@@ -1113,6 +1113,7 @@ if ! command -v gh &> /dev/null; then
     echo ""
     echo "  VM_USER               = $ADMIN_USERNAME"
     echo "  SSH_HOST_NGINX        = $NGINX_PUBLIC_IP"
+    echo "  SSH_HOST_NGINX_PRIVATE = $NGINX_PRIVATE_IP"
     echo "  SSH_HOST_APP          = $APP_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
     echo "  SSH_HOST_POSTGRES     = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
     echo "  SSH_HOST_MONITORING   = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
@@ -1134,6 +1135,7 @@ else
 
     echo "$ADMIN_USERNAME"       | gh secret set VM_USER
     echo "$NGINX_PUBLIC_IP"      | gh secret set SSH_HOST_NGINX
+    echo "$NGINX_PRIVATE_IP"     | gh secret set SSH_HOST_NGINX_PRIVATE
     echo "$APP_PRIVATE_IP"       | gh secret set SSH_HOST_APP
     echo "$POSTGRES_PRIVATE_IP"  | gh secret set SSH_HOST_POSTGRES
     echo "$MONITORING_PRIVATE_IP" | gh secret set SSH_HOST_MONITORING
@@ -1186,12 +1188,13 @@ echo ""
 echo "=========================================="
 echo "GitHub Secrets:"
 echo "=========================================="
-echo "  VM_USER             = $ADMIN_USERNAME"
-echo "  SSH_HOST_NGINX      = $NGINX_PUBLIC_IP"
-echo "  SSH_HOST_APP        = $APP_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
-echo "  SSH_HOST_POSTGRES   = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
-echo "  SSH_HOST_MONITORING = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
-echo "  SSH_PROXY_HOST      = $NGINX_PUBLIC_IP"
+echo "  VM_USER               = $ADMIN_USERNAME"
+echo "  SSH_HOST_NGINX        = $NGINX_PUBLIC_IP"
+echo "  SSH_HOST_NGINX_PRIVATE = $NGINX_PRIVATE_IP"
+echo "  SSH_HOST_APP          = $APP_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+echo "  SSH_HOST_POSTGRES     = $POSTGRES_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+echo "  SSH_HOST_MONITORING   = $MONITORING_PRIVATE_IP  (jump via SSH_HOST_NGINX)"
+echo "  SSH_PROXY_HOST        = $NGINX_PUBLIC_IP"
 echo "  AZURE_KEY           = (from ${SSH_KEY_PATH%.pub})"
 echo ""
 echo "=========================================="
