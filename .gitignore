@@ -2,3 +2,4 @@
 restartDocker.sh
 go1.22.2.linux-amd64.tar.gz
 app/demo.db
+coverage.out
