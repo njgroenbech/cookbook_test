@@ -28,11 +28,11 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | 2.1 | Git repository in use | MANDATORY | ✅ Yes |
 | 2.2 | Branching strategy chosen (Git Flow / GitHub Flow / Trunk-Based) | MANDATORY | ⚠️ Feature branches used, but strategy not documented |
 | 2.3 | Branching strategy documented in README | MANDATORY | ❌ Missing |
-| 2.4 | Issue management system (GitHub Issues) | MANDATORY | ⚠️ Issues likely used, but no issue template configured |
-| 2.5 | GitHub Issue template | MANDATORY | ❌ No `.github/ISSUE_TEMPLATE/` directory |
+| 2.4 | Issue management system (GitHub Issues) | MANDATORY | ✅ Issues managed in Kanban board |
+| 2.5 | GitHub Issue template | MANDATORY | ✅ Bug report and feature request |
 | 2.6 | GitHub PR template | MANDATORY | ✅ `.github/pull_request_template.md` exists |
 | 2.7 | Repository URL submitted in `groups.py` (course repo) | MANDATORY | ⚠️ Cannot verify from code |
-| 2.8 | Kanban board (GitHub Project) | MANDATORY | ⚠️ Cannot verify from code |
+| 2.8 | Kanban board (GitHub Project) | MANDATORY | ✅ Done |
 | 2.9 | Thorough documentation (README, architecture, how to run) | MANDATORY | ⚠️ Partial — env vars and CI/CD documented; no architecture or branching strategy docs |
 
 ---
@@ -98,7 +98,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | 8.2 | SSH access with key pair | MANDATORY | ✅ Configured in IaC scripts |
 | 8.3 | Static / public IP for nginx VM | MANDATORY | ✅ nginx VM has public IP |
 | 8.4 | Necessary ports opened (80, 443, app port) | MANDATORY | ✅ Configured in `azure-setup.sh` |
-| 8.5 | System deployed for entire exam period | MANDATORY | ⚠️ Runtime concern — keep VMs running through exam |
+| 8.5 | System deployed for entire exam period | MANDATORY | ✅ Yes |
 
 ---
 
@@ -161,10 +161,10 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 
 | # | Item | Type | Status |
 |---|------|------|--------|
-| 13.1 | Deployment strategy chosen and documented (blue-green / canary / rolling) | MANDATORY | ❌ Not documented in repo |
+| 13.1 | Deployment strategy chosen and documented (blue-green / canary / rolling) | MANDATORY | ⚠️ Documented in report. Needs to be explained in README as well. |
 | 13.2 | Scaling and optimal deployment strategy discussed | MANDATORY | ❌ Not documented in repo |
-| 13.3 | SLA (Service Level Agreement) written and published | MANDATORY | ❌ Not documented in repo |
-| 13.4 | Definition of done documented | MANDATORY | ❌ Not documented in repo |
+| 13.3 | SLA (Service Level Agreement) written and published | MANDATORY | ⚠️ In report, not in README. |
+| 13.4 | Definition of done documented | MANDATORY | ✅ Documented in README |
 | 13.5 | Downtime / fault tolerance testing | OPTIONAL | ❌ Not done |
 
 ---
@@ -182,17 +182,14 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 ## Gap Summary — Prioritised Backlog
 
 ### High priority (clearly missing, add to Kanban backlog)
-1. **❌ 2.5 — Issue template**: add `.github/ISSUE_TEMPLATE/` with a bug or feature request template
 2. **❌ 7.1/7.2 — Pre-commit hooks**: add `.pre-commit-config.yaml` running `go vet` + tests before every commit
 3. **❌ 5.5 — README badges**: add CI status and coverage badges to `readme.md`
-4. **❌ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
-5. **❌ 13.3 — SLA**: write a simple SLA (uptime target, response time goal, RTO)
-6. **❌ 2.3 — Branching strategy**: document the chosen strategy in `readme.md`
-7. **❌ 13.4 — Definition of done**: agree and write down what "done" means for this project
 
 ### Medium priority (needs verification or small fixes)
+4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
+6. **⚠️ 2.3 — Branching strategy**: document the chosen strategy in `readme.md`
+5. **⚠️ 13.3 — SLA**: write a simple SLA (uptime target, response time goal, RTO)
 8. **⚠️ 12.4 — prometheus.yml**: replace `<app-vm-ip>` etc. with env-var substitution or hardcode at deploy time
 9. **⚠️ 12.7 — node_exporter**: either add it to `docker-compose.yaml` on each VM, or remove from `prometheus.yml` if not deployed
-10. **⚠️ 2.8 — Kanban board**: verify GitHub Project board is active and backlog reflects remaining work
 11. **⚠️ 2.7 — groups.py**: verify group entry is filled out in the course repository
 12. **⚠️ 1.2 — Framework choice**: add one sentence to `readme.md` explaining why Go was chosen
