@@ -12,7 +12,7 @@
 
 ## What `azure-setup.sh` does
 
-Run once to provision infrastructure. **Not a deployment script** — containers are deployed by GitHub Actions on every push.
+Run once to provision infrastructure and perform the initial container deployment. Subsequent deployments are handled by GitHub Actions on every push.
 
 1. Creates resource group `recipe-cookbook-backup` and a shared VNet (`10.0.0.0/16`) in `norwayeast`
 2. Provisions four VMs (all `Standard_B1s`, Ubuntu 22.04):
