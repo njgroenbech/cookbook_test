@@ -988,8 +988,8 @@ ENVEOF
 echo "Authenticating to GHCR..."
 echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u github-token --password-stdin
 
-echo "Removing any existing containers and stale images..."
-sudo docker ps -aq | xargs -r sudo docker rm -f 2>/dev/null || true
+echo "Removing any existing compose containers and stale nginx images..."
+sudo docker compose down --remove-orphans 2>/dev/null || true
 sudo docker rmi legacyproject-nginx legacyproject-nginx:latest 2>/dev/null || true
 
 echo "Pulling and starting nginx container..."
