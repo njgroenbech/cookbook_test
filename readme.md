@@ -1,4 +1,4 @@
-# Legacy Project (needs to be updated)
+# Legacy Project (This readme needs to be updated)
 
 This is a Docker-based Go application with monitoring capabilities.
 
