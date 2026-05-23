@@ -17,7 +17,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | # | Item | Type | Status |
 |---|------|------|--------|
 | 1.1 | Server rewritten in a new framework (NOT Flask, Express, or Spring Boot) | MANDATORY | ✅ Go `net/http` |
-| 1.2 | Framework choice argued and documented | MANDATORY | ⚠️ Not explicitly documented in README |
+| 1.2 | Framework choice argued and documented | MANDATORY | ✅ Documented in README (performance + simplicity, compiled, no external dependencies) |
 
 ---
 
@@ -26,14 +26,14 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | # | Item | Type | Status |
 |---|------|------|--------|
 | 2.1 | Git repository in use | MANDATORY | ✅ Yes |
-| 2.2 | Branching strategy chosen (Git Flow / GitHub Flow / Trunk-Based) | MANDATORY | ⚠️ Feature branches used, but strategy not documented |
-| 2.3 | Branching strategy documented in README | MANDATORY | ❌ Missing |
+| 2.2 | Branching strategy chosen (Git Flow / GitHub Flow / Trunk-Based) | MANDATORY | ✅ GitHub Flow |
+| 2.3 | Branching strategy documented in README | MANDATORY | ✅ Documented in README |
 | 2.4 | Issue management system (GitHub Issues) | MANDATORY | ✅ Issues managed in Kanban board |
 | 2.5 | GitHub Issue template | MANDATORY | ✅ Bug report and feature request |
 | 2.6 | GitHub PR template | MANDATORY | ✅ `.github/pull_request_template.md` exists |
 | 2.7 | Repository URL submitted in `groups.py` (course repo) | MANDATORY | ⚠️ Cannot verify from code |
 | 2.8 | Kanban board (GitHub Project) | MANDATORY | ✅ Done |
-| 2.9 | Thorough documentation (README, architecture, how to run) | MANDATORY | ⚠️ Partial — env vars and CI/CD documented; no architecture or branching strategy docs |
+| 2.9 | Thorough documentation (README, architecture, how to run) | MANDATORY | ✅ README covers architecture, branching, how to run locally, env vars, IaC, CI/CD |
 
 ---
 
@@ -187,9 +187,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 
 ### Medium priority (needs verification or small fixes)
 4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
-6. **⚠️ 2.3 — Branching strategy**: document the chosen strategy in `readme.md`
 5. **⚠️ 13.3 — SLA**: write a simple SLA (uptime target, response time goal, RTO)
 8. **⚠️ 12.4 — prometheus.yml**: replace `<app-vm-ip>` etc. with env-var substitution or hardcode at deploy time
 9. **⚠️ 12.7 — node_exporter**: either add it to `docker-compose.yaml` on each VM, or remove from `prometheus.yml` if not deployed
 11. **⚠️ 2.7 — groups.py**: verify group entry is filled out in the course repository
-12. **⚠️ 1.2 — Framework choice**: add one sentence to `readme.md` explaining why Go was chosen
