@@ -85,8 +85,8 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 
 | # | Item | Type | Status |
 |---|------|------|--------|
-| 7.1 | Pre-commit hooks configured in project | MANDATORY | ❌ No `.pre-commit-config.yaml` or `.githooks/` |
-| 7.2 | Linter or tests run automatically before commit | MANDATORY | ❌ Missing |
+| 7.1 | Pre-commit hooks configured in project | MANDATORY | ✅ `lefthook.yml` + `lefthook install` documented in README |
+| 7.2 | Linter or tests run automatically before commit | MANDATORY | ✅ `golangci-lint` + `go test -race` run in parallel on staged `app/**/*.go` files |
 
 ---
 
@@ -180,10 +180,6 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 ---
 
 ## Gap Summary — Prioritised Backlog
-
-### High priority (clearly missing, add to Kanban backlog)
-2. **❌ 7.1/7.2 — Pre-commit hooks**: add `.pre-commit-config.yaml` running `go vet` + tests before every commit
-
 
 ### Medium priority (needs verification or small fixes)
 4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
