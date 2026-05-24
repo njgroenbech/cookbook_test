@@ -20,6 +20,7 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 - [Infrastructure](#infrastructure)
 - [CI/CD](#cicd)
 - [Branch Protection](#branch-protection-master)
+- [Developer Setup (Git Hooks)](#developer-setup-git-hooks)
 - [Definition of Done](#definition-of-done)
 
 ---
@@ -167,6 +168,64 @@ A GitHub Ruleset is configured on `master` with the following rules:
 - **Block force pushes** — history on master cannot be rewritten
 
 No bypass list is configured, so these rules apply to everyone including admins.
+
+---
+
+## Developer Setup (Git Hooks)
+
+All developers must install the pre-commit hooks once after cloning or pulling this setup. Hooks run linting and unit tests automatically on every `git commit`, catching issues before they reach CI.
+
+### Prerequisites
+
+Install the following tools on your development machine (one-time per machine):
+
+**golangci-lint** (Go linter):
+```bash
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+**lefthook** (hook manager):
+```bash
+go install github.com/evilmartians/lefthook@latest
+```
+
+If the commands are not found after installing, ensure `%GOPATH%\bin` is on your `PATH`. Run `go env GOPATH` in PowerShell to find the path.
+
+### Activate Hooks (run once per clone)
+
+```bash
+lefthook install
+```
+
+This writes hook scripts into `.git/hooks/` based on `lefthook.yml`.
+
+### What Runs on Every Commit
+
+Both checks run in parallel when any `app/**/*.go` file is staged. Commits that only touch Markdown, YAML, Docker files, etc. skip the hooks entirely.
+
+| Check | Command | Notes |
+|-------|---------|-------|
+| Lint | `golangci-lint run ./...` | Runs govet, errcheck, staticcheck, gofmt, and more |
+| Unit tests | `go test -race ./...` | Integration tests excluded — no DB required |
+
+### Running Checks Manually
+
+Run these from the `app/` directory:
+
+| Command | What it does |
+|---------|-------------|
+| `golangci-lint run ./...` | Run golangci-lint |
+| `go vet ./...` | Run go vet only |
+| `go test -race ./...` | Run unit tests |
+| `go test -race -tags integration -coverprofile=coverage.out ./...` | Run unit + integration tests (needs DB env vars) |
+
+### Bypassing Hooks (use sparingly)
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+Only use this for WIP commits on a personal branch. All code must pass checks before merging to master.
 
 ---
 
