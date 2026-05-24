@@ -76,7 +76,7 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 |---|------|------|--------|
 | 6.1 | Unit tests | MANDATORY | ✅ `handlers_test.go`, `templates_test.go`, `main_test.go` |
 | 6.2 | Integration tests (real DB) | MANDATORY | ✅ `handlers_integration_test.go` with Postgres service in CI |
-| 6.3 | Test coverage threshold enforced | MANDATORY | ✅ 30% minimum enforced in `ci.yml` |
+| 6.3 | Test coverage threshold enforced | MANDATORY | ✅ 80% minimum enforced in `ci.yml` |
 | 6.4 | Race condition detection | MANDATORY | ✅ `-race` flag in `go test` |
 
 ---
@@ -150,10 +150,10 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 | 12.1 | Prometheus running alongside application | MANDATORY | ✅ `monitoring/docker-compose.yaml` |
 | 12.2 | Application exposes `/metrics` endpoint | MANDATORY | ✅ `promhttp.Handler()` at `/metrics` in `main.go` |
 | 12.3 | Custom app metrics (request count, duration, DB query duration) | MANDATORY | ✅ Three metric vectors registered in `main.go` |
-| 12.4 | Prometheus scrapes app metrics | MANDATORY | ⚠️ `prometheus.yml` has placeholder IPs (`<app-vm-ip>` etc.) — must be real values at deploy time |
+| 12.4 | Prometheus scrapes app metrics | MANDATORY | ✅ `prometheus.yml` uses `${APP_HOST}`/`${NGINX_PRIVATE_HOST}`/`${DB_HOST}` env vars; `cd.yml` renders the file via `envsubst` before copying it to the monitoring VM |
 | 12.5 | Grafana dashboard configured | MANDATORY | ✅ Grafana service in `monitoring/docker-compose.yaml`; proxied via nginx |
 | 12.6 | Monitoring deployed to its own VM | MANDATORY | ✅ Dedicated monitoring VM in IaC setup |
-| 12.7 | node_exporter for system metrics | MANDATORY | ⚠️ Listed in `prometheus.yml` scrape targets but not in any `docker-compose.yaml` |
+| 12.7 | node_exporter for system metrics | MANDATORY | ✅ Installed as a standalone Docker container on nginx, app, and postgres VMs by `azure-setup.sh` (port 9100); not in docker-compose by design — managed by IaC |
 
 ---
 
@@ -184,6 +184,4 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 ### Medium priority (needs verification or small fixes)
 4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
 5. **⚠️ 13.3 — SLA**: write a simple SLA (uptime target, response time goal, RTO)
-8. **⚠️ 12.4 — prometheus.yml**: replace `<app-vm-ip>` etc. with env-var substitution or hardcode at deploy time
-9. **⚠️ 12.7 — node_exporter**: either add it to `docker-compose.yaml` on each VM, or remove from `prometheus.yml` if not deployed
 11. **⚠️ 2.7 — groups.py**: verify group entry is filled out in the course repository
