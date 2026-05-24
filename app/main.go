@@ -1,4 +1,3 @@
-// test commit to verify git hooks
 package main
 
 import (
