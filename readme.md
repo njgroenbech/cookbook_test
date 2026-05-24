@@ -19,6 +19,8 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 - [Environment Variables](#environment-variables)
 - [Infrastructure](#infrastructure)
 - [CI/CD](#cicd)
+- [Monitoring](#monitoring)
+- [Service Level Agreement](#service-level-agreement)
 - [Branch Protection](#branch-protection-master)
 - [Developer Setup (Git Hooks)](#developer-setup-git-hooks)
 - [Definition of Done](#definition-of-done)
@@ -140,7 +142,43 @@ Two GitHub Actions workflows run on every push:
 
 On pull requests, `cd.yml` builds and scans the image but does not deploy. Full deployment only happens on merge to `master`.
 
+**Deployment strategy — immutable rolling with automatic rollback:**
+Every deploy tags the image with both `:latest` and `:<commit-sha>`. The pipeline blocks on health checks for all four VMs before promoting the image to `:latest-stable`. If any VM fails its health check within 60 seconds, that VM is rolled back to `:latest-stable` — the last confirmed-healthy build. The `:latest-stable` tag is never pushed speculatively, so rollback is always available.
+
 See [`.github/workflows/README.md`](.github/workflows/README.md) for a detailed breakdown of every step.
+
+---
+
+## Monitoring
+
+Prometheus scrapes metrics from the app every 15 seconds. Grafana visualises them.
+
+| Environment | Prometheus | Grafana |
+|---|---|---|
+| Local | `http://localhost:9090` | `http://localhost:3001` |
+| Production | internal only | `http://20.100.169.50/grafana/` |
+
+Metrics exposed at `/metrics`:
+
+| Metric | Type | What it tracks |
+|---|---|---|
+| `http_requests_total` | Counter | Request volume per endpoint and status code |
+| `http_request_duration_seconds` | Histogram | Request latency per endpoint |
+| `db_query_duration_seconds` | Histogram | Database operation performance per query type |
+
+System metrics (CPU, memory, disk, network) are collected from all VMs via `node_exporter` running on port 9100.
+
+---
+
+## Service Level Agreement
+
+| Mål | Værdi |
+|---|---|
+| Oppetid | ≥ 99% (maks. ~7 timers nedetid over 30 dage) |
+| Maks. svartid | 2 sekunder for alle endpoints under normal belastning |
+| Detektering ved nedetid | Inden for 30 minutter via Grafana-alerting |
+
+Svartid måles via `http_request_duration_seconds` i Grafana. Ved uplanlagt nedetid er målet at detektere og reagere inden for 30 minutter.
 
 ---
 
