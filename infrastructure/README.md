@@ -1,5 +1,7 @@
 # Infrastructure
 
+![Azure Architecture](../docs/azure-architecture.png)
+
 ## Prerequisites
 
 | Tool | Purpose | Install |

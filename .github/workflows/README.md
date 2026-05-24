@@ -1,5 +1,7 @@
 # CI/CD Pipeline
 
+![CI/CD Pipeline](../../docs/cicd-pipeline.png)
+
 Two workflow files run automatically on every push.
 
 ---

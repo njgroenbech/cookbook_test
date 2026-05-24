@@ -43,25 +43,9 @@ Go with `net/http` was chosen over the legacy Python/Flask stack for its perform
 
 ## Architecture
 
-The application is split across four Azure VMs in a shared private VNet. Only the nginx VM has a public IP.
+The application is split across four Azure VMs in a shared private VNet (`10.0.1.0/24`). Only the nginx VM has a public IP.
 
-```
-Internet
-    │
-    ▼
-┌─────────────┐
-│  nginx VM   │  (public IP, ports 80/443)
-│  Nginx      │  reverse proxy → app, /grafana/ → monitoring
-└──────┬──────┘
-       │ private VNet (10.0.1.0/24)
-       ├─────────────────────┐────────────────────┐
-       ▼                     ▼                    ▼
-┌─────────────┐     ┌──────────────┐    ┌──────────────────┐
-│   app VM    │     │ postgres VM  │    │  monitoring VM   │
-│  Go app     │────▶│ PostgreSQL   │    │ Prometheus        │
-│  :3000      │     │  :5432       │    │ Grafana  :3001   │
-└─────────────┘     └──────────────┘    └──────────────────┘
-```
+![Azure Architecture](docs/azure-architecture.png)
 
 - The app VM and postgres VM are reachable only within the VNet — no public IP.
 - The monitoring VM is also private; Grafana is exposed through nginx at `/grafana/`.
@@ -151,6 +135,8 @@ Two GitHub Actions workflows run on every push:
 |---|---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | Every push + PR | `go vet`, unit tests, integration tests, ≥80% coverage, `govulncheck`, `hadolint` |
 | [`cd.yml`](.github/workflows/cd.yml) | Push to `master` + PR to `master` | Build images, Trivy CVE scan, push to GHCR, deploy to all four VMs, rollback on failure, Discord notification |
+
+![CI/CD Pipeline](docs/cicd-pipeline.png)
 
 On pull requests, `cd.yml` builds and scans the image but does not deploy. Full deployment only happens on merge to `master`.
 
