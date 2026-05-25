@@ -31,7 +31,7 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 
 ## Quick-Start Guide
 
-### Option A — View the live app (no setup required)
+### Option A — View the live app
 
 The application is deployed and running. Open the URL printed at the end of `azure-setup.sh`, or ask the repository owner for the current nginx public IP.
 
