@@ -174,7 +174,7 @@ Prometheus scrapes metrics from the app every 15 seconds. Grafana visualises the
 | Environment | Prometheus | Grafana |
 |---|---|---|
 | Local | `http://localhost:9090` | `http://localhost:3001` |
-| Production | internal only | `http://20.100.169.50/grafana/` |
+| Production | internal only | `http://<nginx-public-ip>/grafana/` — IP is the value of the `SSH_HOST_NGINX` secret, set by `azure-setup.sh` |
 
 Metrics exposed at `/metrics`:
 

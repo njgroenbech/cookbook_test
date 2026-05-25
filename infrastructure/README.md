@@ -29,7 +29,7 @@ Run once to provision infrastructure and perform the initial container deploymen
 7. Runs a quick end-to-end check (postgres, backend HTTP, nginx public IP)
 8. Sets GitHub Actions secrets via `gh secret set` (or prints them for manual entry)
 
-GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_APP`, `SSH_HOST_POSTGRES`, `SSH_HOST_MONITORING`, `SSH_PROXY_HOST`, `AZURE_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
+GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_NGINX_PRIVATE`, `SSH_HOST_APP`, `SSH_HOST_POSTGRES`, `SSH_HOST_MONITORING`, `SSH_PROXY_HOST`, `AZURE_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
 
 ## What `azure-teardown.sh` does
 
