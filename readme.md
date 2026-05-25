@@ -52,12 +52,14 @@ The application is deployed and running. Open the URL printed at the end of `azu
 
 **Prerequisites — install once per machine:**
 
+> **Windows:** The setup scripts are bash scripts. Run them in **WSL** or **Git Bash** — not PowerShell or Command Prompt.
+
 | Tool | Install | Auth |
 |---|---|---|
-| Azure CLI | `winget install Microsoft.AzureCLI` | `az login` |
-| GitHub CLI | `winget install GitHub.cli` | `gh auth login` |
+| Azure CLI | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux: `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash` | `az login` |
+| GitHub CLI | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux: `sudo apt install gh` | `gh auth login` |
 | Azure subscription | Azure for Students works | quota for 4 × Standard_B1s VMs + 1 Standard public IP |
-| `openssl` | Included on WSL / macOS / Linux / Git Bash | — |
+| `openssl` | Pre-installed on macOS/Linux; included in Git Bash / WSL on Windows | — |
 | SSH key | Auto-generated at `~/.ssh/azure_key` if missing | — |
 
 **Steps:**
@@ -126,7 +128,7 @@ Branch protection rules on `master` enforce that no direct pushes are allowed an
 
 ## Running Locally
 
-**Prerequisites:** Docker, Docker Compose, and a running PostgreSQL instance (or use the database compose file).
+**Prerequisites:** Docker and Docker Compose. On **Windows**, run the commands below in **Git Bash** or **WSL** — or replace `cp` with `copy` if using Command Prompt / PowerShell.
 
 **1. Start the database**
 ```bash
@@ -298,7 +300,9 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 go install github.com/evilmartians/lefthook@latest
 ```
 
-If the commands are not found after installing, ensure `%GOPATH%\bin` is on your `PATH`. Run `go env GOPATH` in PowerShell to find the path.
+If the commands are not found after installing, add the Go binary directory to your `PATH`:
+- **Windows:** Add `%GOPATH%\bin` — run `go env GOPATH` in PowerShell to find the path
+- **macOS / Linux:** Add `export PATH="$PATH:$(go env GOPATH)/bin"` to `~/.zshrc` or `~/.bashrc`, then restart your terminal
 
 ### Activate Hooks (run once per clone)
 

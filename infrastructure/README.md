@@ -4,13 +4,15 @@
 
 ## Prerequisites
 
+> **Windows:** These are bash scripts. Run them in **WSL** or **Git Bash** — not PowerShell or Command Prompt.
+
 | Tool | Purpose | Install |
 |---|---|---|
-| [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) | Create VMs | `winget install Microsoft.AzureCLI` |
+| [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) | Create VMs | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux: `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash` |
 | Azure subscription | Quota for 1 Standard public IP | Azure for Students works |
-| `openssl` | Generate DB/Grafana passwords | Included on WSL/macOS/Linux |
+| `openssl` | Generate DB/Grafana passwords | Pre-installed on macOS/Linux; included in Git Bash / WSL on Windows |
 | SSH key at `~/.ssh/azure_key` | VM auth | Auto-generated if missing |
-| [GitHub CLI](https://cli.github.com/) (optional) | Set secrets automatically | `winget install GitHub.cli` then `gh auth login` |
+| [GitHub CLI](https://cli.github.com/) (optional) | Set secrets automatically | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux: `sudo apt install gh`<br>Then run `gh auth login` |
 
 ## What `azure-setup.sh` does
 
