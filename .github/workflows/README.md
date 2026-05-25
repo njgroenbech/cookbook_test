@@ -14,7 +14,7 @@ Runs on every push to any branch and on every pull request.
 |---|---|---|
 | Static analysis | `go vet` | Catches common Go bugs (misused format strings, unreachable code, etc.) |
 | Tests + race detector | `go test -race` | Runs all unit tests and detects data races |
-| Coverage threshold | `go tool cover` | Fails if total test coverage drops below 30% |
+| Coverage threshold | `go tool cover` | Fails if total test coverage drops below 80% |
 | Vulnerability scan | `govulncheck` | Checks Go dependencies against the Go vulnerability database |
 | Dockerfile lint | `hadolint` | Enforces Dockerfile best practices |
 
@@ -84,6 +84,7 @@ Runs once after all four VMs are confirmed healthy.
 | `DB_NAME` | Database name (also used as `POSTGRES_DB`) |
 | `GRAFANA_PASSWORD` | Grafana admin password (`GF_SECURITY_ADMIN_PASSWORD`) |
 | `APP_PRIVATE_IP` | Private IP of the app VM — written as `APP_HOST` in the nginx `.env` |
+| `SSH_HOST_NGINX_PRIVATE` | Private IP of the nginx VM — used to render `prometheus.yml` scrape targets before copying to the monitoring VM |
 | `DISCORD_WEBHOOK_URL` | Deploy notifications (optional) |
 
 ---

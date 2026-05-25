@@ -37,6 +37,8 @@ Deletes all resources in `recipe-cookbook-backup` in order: VMs → NICs → dis
 
 ## Usage
 
+The full setup takes **20–40 minutes** on a standard connection (VM provisioning ~5 min per VM, Docker installation and container startup account for the rest).
+
 ```bash
 # Provision everything
 bash azure-setup.sh

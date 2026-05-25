@@ -17,6 +17,7 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 - [Branching Strategy](#branching-strategy)
 - [Running Locally](#running-locally)
 - [Environment Variables](#environment-variables)
+- [Database Schema](#database-schema)
 - [Infrastructure](#infrastructure)
 - [CI/CD](#cicd)
 - [Monitoring](#monitoring)
@@ -118,6 +119,23 @@ See each service's `.env.example` for the full list including monitoring and ngi
 
 ---
 
+## Database Schema
+
+The schema is applied automatically on startup by `initDB()` in [`app/db.go`](app/db.go). No manual migrations are required.
+
+| Table | Description |
+|---|---|
+| `users` | Registered users (`id`, `email`, `password`, `name`) |
+| `recipes` | Recipe entries (`id`, `title`, `time_minutes`, `price`, `link`, `description`, `image`) |
+| `ingredients` | Ingredient definitions (`id`, `name`) |
+| `tags` | Tag definitions (`id`, `name`) |
+| `recipe_ingredients` | Many-to-many join: recipe ↔ ingredient, with `amount` and `unit` |
+| `recipe_tags` | Many-to-many join: recipe ↔ tag |
+
+The database is seeded with four sample recipes on first startup if the `recipes` table is empty.
+
+---
+
 ## Infrastructure
 
 Infrastructure is managed as code using bash scripts in [`infrastructure/`](infrastructure/README.md).
@@ -168,17 +186,30 @@ Metrics exposed at `/metrics`:
 
 System metrics (CPU, memory, disk, network) are collected from all VMs via `node_exporter` running on port 9100.
 
+### Grafana Alerting
+
+Alert rules are not provisioned automatically — they must be configured manually in the Grafana UI after the first deployment. To satisfy the SLA, configure the following alerts:
+
+| Alert | Condition | Purpose |
+|---|---|---|
+| App down | `up{job="ultimate-bravery-cookbook"} == 0` for > 1 min | Detect app or VM outage |
+| High latency | `histogram_quantile(0.95, http_request_duration_seconds) > 2` | Detect SLA breach (2 s response time) |
+| High error rate | `rate(http_requests_total{status=~"5.."}[5m]) > 0.05` | Detect elevated 5xx errors |
+| Node down | `up{job="node_exporter"} == 0` for > 1 min | Detect VM-level failure |
+
+Set the **evaluation interval** to 1 minute and configure a **contact point** (e-mail or webhook) under Grafana → Alerting → Contact points so that notifications are delivered within the 30-minute detection window defined in the SLA.
+
 ---
 
 ## Service Level Agreement
 
-| Mål | Værdi |
+| Goal | Value |
 |---|---|
-| Oppetid | ≥ 99% (maks. ~7 timers nedetid over 30 dage) |
-| Maks. svartid | 2 sekunder for alle endpoints under normal belastning |
-| Detektering ved nedetid | Inden for 30 minutter via Grafana-alerting |
+| Uptime | ≥ 99% (max. ~7 hours downtime over 30 days) |
+| Max. response time | 2 seconds for all endpoints under normal load |
+| Downtime detection | Within 30 minutes via Grafana alerting |
 
-Svartid måles via `http_request_duration_seconds` i Grafana. Ved uplanlagt nedetid er målet at detektere og reagere inden for 30 minutter.
+Response time is measured via `http_request_duration_seconds` in Grafana. In case of unplanned downtime, the target is to detect and respond within 30 minutes.
 
 ---
 
@@ -256,14 +287,14 @@ Only use this for WIP commits on a personal branch. All code must pass checks be
 ## Definition of Done
 
 ### 1. Code Quality & Standards
-- **Peer Reviewed:** At least one peer has reviewed and approved the Pull Request on important changes.
+- **Peer Reviewed:** At least one peer has reviewed and approved the Pull Request (PR) on important changes.
 - **Linting & Style:** Code passes all static analysis and linting checks with zero critical warnings.
 - **No Technical Debt:** No temporary workarounds or "TODO" comments are introduced unless tracked in the backlog.
 
 ### 2. Testing Automation
-- **Unit Tests:** Minimum test coverage threshold is met (≥80%), and all tests pass.
+- **Unit Tests:** Minimum test coverage threshold is met (80%+), and all tests pass.
 - **Integration Tests:** API endpoints and component interactions are validated automatically in the pipeline.
-- **Security Scanning (DevSecOps):** SAST and dependency vulnerability scans run with zero "High" or "Critical" vulnerabilities.
+- **Security Scanning (DevSecOps):** Static Application Security Testing (SAST) and dependency vulnerability scans run with zero "High" or "Critical" vulnerabilities.
 
 ### 3. Continuous Integration & Deployment (CI/CD)
 - **Green Build:** The CI pipeline builds the artifact/container successfully without manual intervention.
@@ -271,9 +302,7 @@ Only use this for WIP commits on a personal branch. All code must pass checks be
 - **Environment Parity:** The deployment uses the exact same configuration templates and scripts that will be used for production.
 
 ### 4. Observability & Operations
-- **Telemetry:** Logging and metrics are implemented. Prometheus metrics exposed at `/metrics`, visualised in Grafana.
+- **Telemetry:** Logging, metrics, and distributed tracing are implemented following architectural standards.
 
 ### 5. Product & Compliance
-- **Acceptance Criteria:** The feature fulfils all acceptance criteria defined in the user story / issue.
-- **Documentation:** User-facing documentation, API specs (Swagger/OpenAPI), and internal architecture are updated.
-- **Feature Flags:** Not applicable at this project scale.
+- **Documentation:** User-facing documentation, API specs (e.g., Swagger/OpenAPI), and internal architecture diagrams are updated.
