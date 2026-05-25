@@ -12,6 +12,7 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 
 ## Table of Contents
 
+- [Quick-Start Guide](#quick-start-guide)
 - [Tech Stack & Framework Choice](#tech-stack--framework-choice)
 - [Architecture](#architecture)
 - [Branching Strategy](#branching-strategy)
@@ -25,6 +26,59 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 - [Branch Protection](#branch-protection-master)
 - [Developer Setup (Git Hooks)](#developer-setup-git-hooks)
 - [Definition of Done](#definition-of-done)
+
+---
+
+## Quick-Start Guide
+
+### Option A — View the live app (no setup required)
+
+The application is deployed and running. Open the URL printed at the end of `azure-setup.sh`, or ask the repository owner for the current nginx public IP.
+
+| Endpoint | URL |
+|---|---|
+| Web UI | `http://<nginx-public-ip>/` |
+| REST API overview | `http://<nginx-public-ip>/api` |
+| Swagger UI | `http://<nginx-public-ip>/swagger` |
+| Grafana | `http://<nginx-public-ip>/grafana/` |
+
+> The live IP is stored in the `SSH_HOST_NGINX` GitHub secret and changes if the infrastructure is torn down and rebuilt.
+
+---
+
+### Option B — Deploy your own instance
+
+> **Fork first.** You need your own copy of the repository so you can write GitHub secrets and trigger your own CI/CD pipeline without touching the original infrastructure.
+
+**Prerequisites — install once per machine:**
+
+| Tool | Install | Auth |
+|---|---|---|
+| Azure CLI | `winget install Microsoft.AzureCLI` | `az login` |
+| GitHub CLI | `winget install GitHub.cli` | `gh auth login` |
+| Azure subscription | Azure for Students works | quota for 4 × Standard_B1s VMs + 1 Standard public IP |
+| `openssl` | Included on WSL / macOS / Linux / Git Bash | — |
+| SSH key | Auto-generated at `~/.ssh/azure_key` if missing | — |
+
+**Steps:**
+
+```bash
+# 1. Fork the repo on GitHub, then clone your fork
+git clone https://github.com/<your-username>/legacyProject.git
+cd legacyProject
+
+# 2. Provision all four Azure VMs, deploy the app, and write all GitHub secrets automatically
+bash infrastructure/azure-setup.sh
+```
+
+`azure-setup.sh` takes **20–40 minutes** and handles everything: VMs, networking, Docker, secrets, and the initial deployment. When it finishes it prints the public IP and SSH access commands.
+
+From this point, every push to `master` on your fork triggers the full CI/CD pipeline and redeploys automatically.
+
+**To tear everything down:**
+```bash
+bash infrastructure/azure-teardown.sh
+```
 
 ---
 
