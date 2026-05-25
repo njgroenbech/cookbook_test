@@ -40,7 +40,19 @@ done
 
 # Configuration variables - CUSTOMIZE THESE
 RESOURCE_GROUP="recipe-cookbook-backup"
-LOCATION="norwayeast"
+LOCATION=""  # Auto-detected from available European regions after login
+PREFERRED_REGIONS=(
+    "norwayeast"
+    "swedencentral"
+    "northeurope"
+    "westeurope"
+    "uksouth"
+    "ukwest"
+    "germanywestcentral"
+    "francecentral"
+    "switzerlandnorth"
+    "polandcentral"
+)
 NGINX_VM_NAME="recipe-cookbook-nginx-vm"
 APP_VM_NAME="recipe-cookbook-app-vm"
 POSTGRES_VM_NAME="recipe-cookbook-postgres-vm"
@@ -103,6 +115,39 @@ else
     echo -e "${GREEN}✅ Already logged in to Azure${NC}"
     ACCOUNT=$(az account show --query name -o tsv)
     echo "Using subscription: $ACCOUNT"
+fi
+
+echo ""
+echo "=========================================="
+echo "Detecting Available Azure Region"
+echo "=========================================="
+
+AVAILABLE_LOCATIONS=$(az account list-locations --query "[].name" -o tsv 2>/dev/null)
+
+MATCHING_REGIONS=()
+for region in "${PREFERRED_REGIONS[@]}"; do
+    if echo "$AVAILABLE_LOCATIONS" | grep -qx "$region"; then
+        MATCHING_REGIONS+=("$region")
+    fi
+done
+
+if [ ${#MATCHING_REGIONS[@]} -eq 0 ]; then
+    echo -e "${YELLOW}⚠️  None of the preferred European regions are available for your subscription.${NC}"
+    echo "Available locations:"
+    echo "$AVAILABLE_LOCATIONS"
+    read -p "Enter the location you want to use: " LOCATION
+elif [ ${#MATCHING_REGIONS[@]} -eq 1 ]; then
+    LOCATION="${MATCHING_REGIONS[0]}"
+    echo -e "${GREEN}✅ Auto-selected region: $LOCATION${NC}"
+else
+    echo "Multiple European regions are available for your subscription:"
+    for i in "${!MATCHING_REGIONS[@]}"; do
+        echo "  $((i+1))) ${MATCHING_REGIONS[$i]}"
+    done
+    read -p "Select a region [1-${#MATCHING_REGIONS[@]}] (default: 1): " REGION_CHOICE
+    REGION_CHOICE=${REGION_CHOICE:-1}
+    LOCATION="${MATCHING_REGIONS[$((REGION_CHOICE-1))]}"
+    echo -e "${GREEN}✅ Selected region: $LOCATION${NC}"
 fi
 
 echo ""

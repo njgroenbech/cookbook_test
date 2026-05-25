@@ -1,0 +1,36 @@
+run:
+  timeout: 2m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - bodyclose
+    - noctx
+
+  disable:
+    - exhaustruct
+    - wsl
+    - funlen
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: hello/app
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    - path: "_test\\.go"
+      linters:
+        - errcheck
+        - noctx

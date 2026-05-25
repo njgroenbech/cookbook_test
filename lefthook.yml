@@ -1,0 +1,9 @@
+pre-commit:
+  parallel: true
+  commands:
+    lint:
+      glob: "app/*.go"
+      run: cd app && golangci-lint run ./...
+    test:
+      glob: "app/*.go"
+      run: cd app && go test ./...
