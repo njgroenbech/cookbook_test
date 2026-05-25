@@ -52,12 +52,10 @@ The application is deployed and running. Open the URL printed at the end of `azu
 
 **Prerequisites — install once per machine:**
 
-> **Windows:** The setup scripts are bash scripts. Run them in **WSL** or **Git Bash** — not PowerShell or Command Prompt.
-
 | Tool | Install | Auth |
 |---|---|---|
-| Azure CLI | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux: `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash` | `az login` |
-| GitHub CLI | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux: `sudo apt install gh` | `gh auth login` |
+| Azure CLI | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux (Ubuntu/Debian): `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash`<br>Other Linux: [install guide](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-linux) | `az login` |
+| GitHub CLI | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux (Ubuntu/Debian): `sudo apt install gh`<br>Other Linux: [install guide](https://cli.github.com/) | `gh auth login` |
 | Azure subscription | Azure for Students works | quota for 4 × Standard_B1s VMs + 1 Standard public IP |
 | `openssl` | Pre-installed on macOS/Linux; included in Git Bash / WSL on Windows | — |
 | SSH key | Auto-generated at `~/.ssh/azure_key` if missing | — |
@@ -70,6 +68,7 @@ git clone https://github.com/<your-username>/legacyProject.git
 cd legacyProject
 
 # 2. Provision all four Azure VMs, deploy the app, and write all GitHub secrets automatically
+# (Windows: run in Git Bash or WSL)
 bash infrastructure/azure-setup.sh
 ```
 
@@ -81,6 +80,7 @@ From this point, every push to `master` on your fork triggers the full CI/CD pip
 
 **To tear everything down:**
 ```bash
+# (Windows: run in Git Bash or WSL)
 bash infrastructure/azure-teardown.sh
 ```
 
@@ -104,7 +104,7 @@ Go with `net/http` was chosen over the legacy Python/Flask stack for its perform
 
 ## Architecture
 
-The application is split across four Azure VMs in a shared private VNet (`10.0.1.0/24`). Only the nginx VM has a public IP.
+The application is split across four Azure VMs in a shared VNet (`10.0.0.0/16`), all placed in subnet `10.0.1.0/24`. Only the nginx VM has a public IP.
 
 ![Azure Architecture](docs/azure-architecture.png)
 
@@ -130,7 +130,7 @@ Branch protection rules on `master` enforce that no direct pushes are allowed an
 
 ## Running Locally
 
-**Prerequisites:** Docker and Docker Compose. On **Windows**, run the commands below in **Git Bash** or **WSL** — or replace `cp` with `copy` if using Command Prompt / PowerShell.
+**Prerequisites:** Docker and Docker Compose. On **Windows** without Git Bash or WSL, replace `cp` with `copy`.
 
 **1. Start the database**
 ```bash
@@ -251,7 +251,7 @@ Alert rules are not provisioned automatically — they must be configured manual
 | Alert | Condition | Purpose |
 |---|---|---|
 | App down | `up{job="ultimate-bravery-cookbook"} == 0` for > 1 min | Detect app or VM outage |
-| High latency | `histogram_quantile(0.95, http_request_duration_seconds) > 2` | Detect SLA breach (2 s response time) |
+| High latency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2` | Detect SLA breach (2 s response time) |
 | High error rate | `rate(http_requests_total{status=~"5.."}[5m]) > 0.05` | Detect elevated 5xx errors |
 | Node down | `up{job="node_exporter"} == 0` for > 1 min | Detect VM-level failure |
 
@@ -303,10 +303,12 @@ go install github.com/evilmartians/lefthook@latest
 ```
 
 If the commands are not found after installing, add the Go binary directory to your `PATH`:
-- **Windows:** Add `%GOPATH%\bin` — run `go env GOPATH` in PowerShell to find the path
+- **Windows:** Add `%GOPATH%\bin` to your user PATH via **System Properties → Environment Variables** (run `go env GOPATH` to find the path)
 - **macOS / Linux:** Add `export PATH="$PATH:$(go env GOPATH)/bin"` to `~/.zshrc` or `~/.bashrc`, then restart your terminal
 
 ### Activate Hooks (run once per clone)
+
+Run from the **repository root**:
 
 ```bash
 lefthook install

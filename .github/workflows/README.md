@@ -51,7 +51,7 @@ Deploys to four VMs in parallel using a matrix — one per service:
 
 For each VM:
 1. Copies the service's `docker-compose.yaml` to `~/legacyProject/<service>/` via SCP. The monitoring VM also receives `prometheus.yml`.
-2. Writes `~/legacyProject/<service>/.env` from the service-specific `ENV_FILE_*` secret — never echoed to logs.
+2. Assembles `~/legacyProject/<service>/.env` from individual secrets (`DB_HOST`, `DB_USER`, `DB_PASSWORD`, etc.) using `printf` — never echoed to logs.
 3. Pulls the new image and runs `docker compose up --wait`, blocking until all healthchecks pass within 60 seconds.
 4. On failure, rolls back to `:<image>:latest-stable` (the last confirmed-healthy image) for services with a custom image.
 
