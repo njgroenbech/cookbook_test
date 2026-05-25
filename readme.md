@@ -12,16 +12,77 @@ A Go rewrite of a legacy Python/Flask recipe cookbook application. The project s
 
 ## Table of Contents
 
+- [Quick-Start Guide](#quick-start-guide)
 - [Tech Stack & Framework Choice](#tech-stack--framework-choice)
 - [Architecture](#architecture)
 - [Branching Strategy](#branching-strategy)
 - [Running Locally](#running-locally)
 - [Environment Variables](#environment-variables)
+- [Database Schema](#database-schema)
 - [Infrastructure](#infrastructure)
 - [CI/CD](#cicd)
+- [Monitoring](#monitoring)
+- [Service Level Agreement](#service-level-agreement)
 - [Branch Protection](#branch-protection-master)
 - [Developer Setup (Git Hooks)](#developer-setup-git-hooks)
 - [Definition of Done](#definition-of-done)
+
+---
+
+## Quick-Start Guide
+
+### Option A — View the live app
+
+The application is deployed and running. Open the URL printed at the end of `azure-setup.sh`, or ask the repository owner for the current nginx public IP.
+
+| Endpoint | URL |
+|---|---|
+| Web UI | `http://<nginx-public-ip>/` |
+| REST API overview | `http://<nginx-public-ip>/api` |
+| Swagger UI | `http://<nginx-public-ip>/swagger` |
+| Grafana | `http://<nginx-public-ip>/grafana/` |
+
+> The live IP is stored in the `SSH_HOST_NGINX` GitHub secret and changes if the infrastructure is torn down and rebuilt.
+
+---
+
+### Option B — Deploy your own instance
+
+> **Fork first.** You need your own copy of the repository so you can write GitHub secrets and trigger your own CI/CD pipeline without touching the original infrastructure.
+
+**Prerequisites — install once per machine:**
+
+| Tool | Install | Auth |
+|---|---|---|
+| Azure CLI | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux (Ubuntu/Debian): `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash`<br>Other Linux: [install guide](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-linux) | `az login` |
+| GitHub CLI | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux (Ubuntu/Debian): `sudo apt install gh`<br>Other Linux: [install guide](https://cli.github.com/) | `gh auth login` |
+| Azure subscription | Azure for Students works | quota for 4 × Standard_B1s VMs + 1 Standard public IP |
+| `openssl` | Pre-installed on macOS/Linux; included in Git Bash / WSL on Windows | — |
+| SSH key | Auto-generated at `~/.ssh/azure_key` if missing | — |
+
+**Steps:**
+
+```bash
+# 1. Fork the repo on GitHub, then clone your fork
+git clone https://github.com/<your-username>/legacyProject.git
+cd legacyProject
+
+# 2. Provision all four Azure VMs, deploy the app, and write all GitHub secrets automatically
+# (Windows: run in Git Bash or WSL)
+bash infrastructure/azure-setup.sh
+```
+
+`azure-setup.sh` takes **20–40 minutes** and handles everything: VMs, networking, Docker, secrets, and the initial deployment. When it finishes it prints the public IP and SSH access commands.
+
+> **Azure region:** The script auto-detects which region to use based on what is available on your account. If none of the preferred European regions are available (common on restricted accounts), it will print all available regions and ask you to pick one. See [infrastructure/README.md](infrastructure/README.md#azure-region) for details and a command to check your available regions ahead of time.
+
+From this point, every push to `master` on your fork triggers the full CI/CD pipeline and redeploys automatically.
+
+**To tear everything down:**
+```bash
+# (Windows: run in Git Bash or WSL)
+bash infrastructure/azure-teardown.sh
+```
 
 ---
 
@@ -43,25 +104,9 @@ Go with `net/http` was chosen over the legacy Python/Flask stack for its perform
 
 ## Architecture
 
-The application is split across four Azure VMs in a shared private VNet. Only the nginx VM has a public IP.
+The application is split across four Azure VMs in a shared VNet (`10.0.0.0/16`), all placed in subnet `10.0.1.0/24`. Only the nginx VM has a public IP.
 
-```
-Internet
-    │
-    ▼
-┌─────────────┐
-│  nginx VM   │  (public IP, ports 80/443)
-│  Nginx      │  reverse proxy → app, /grafana/ → monitoring
-└──────┬──────┘
-       │ private VNet (10.0.1.0/24)
-       ├─────────────────────┐────────────────────┐
-       ▼                     ▼                    ▼
-┌─────────────┐     ┌──────────────┐    ┌──────────────────┐
-│   app VM    │     │ postgres VM  │    │  monitoring VM   │
-│  Go app     │────▶│ PostgreSQL   │    │ Prometheus        │
-│  :3000      │     │  :5432       │    │ Grafana  :3001   │
-└─────────────┘     └──────────────┘    └──────────────────┘
-```
+![Azure Architecture](docs/azure-architecture.png)
 
 - The app VM and postgres VM are reachable only within the VNet — no public IP.
 - The monitoring VM is also private; Grafana is exposed through nginx at `/grafana/`.
@@ -85,7 +130,7 @@ Branch protection rules on `master` enforce that no direct pushes are allowed an
 
 ## Running Locally
 
-**Prerequisites:** Docker, Docker Compose, and a running PostgreSQL instance (or use the database compose file).
+**Prerequisites:** Docker and Docker Compose. On **Windows** without Git Bash or WSL, replace `cp` with `copy`.
 
 **1. Start the database**
 ```bash
@@ -132,6 +177,23 @@ See each service's `.env.example` for the full list including monitoring and ngi
 
 ---
 
+## Database Schema
+
+The schema is applied automatically on startup by `initDB()` in [`app/db.go`](app/db.go). No manual migrations are required.
+
+| Table | Description |
+|---|---|
+| `users` | Registered users (`id`, `email`, `password`, `name`) |
+| `recipes` | Recipe entries (`id`, `title`, `time_minutes`, `price`, `link`, `description`, `image`) |
+| `ingredients` | Ingredient definitions (`id`, `name`) |
+| `tags` | Tag definitions (`id`, `name`) |
+| `recipe_ingredients` | Many-to-many join: recipe ↔ ingredient, with `amount` and `unit` |
+| `recipe_tags` | Many-to-many join: recipe ↔ tag |
+
+The database is seeded with four sample recipes on first startup if the `recipes` table is empty.
+
+---
+
 ## Infrastructure
 
 Infrastructure is managed as code using bash scripts in [`infrastructure/`](infrastructure/README.md).
@@ -152,9 +214,60 @@ Two GitHub Actions workflows run on every push:
 | [`ci.yml`](.github/workflows/ci.yml) | Every push + PR | `go vet`, unit tests, integration tests, ≥80% coverage, `govulncheck`, `hadolint` |
 | [`cd.yml`](.github/workflows/cd.yml) | Push to `master` + PR to `master` | Build images, Trivy CVE scan, push to GHCR, deploy to all four VMs, rollback on failure, Discord notification |
 
+![CI/CD Pipeline](docs/cicd-pipeline.png)
+
 On pull requests, `cd.yml` builds and scans the image but does not deploy. Full deployment only happens on merge to `master`.
 
+**Deployment strategy — immutable rolling with automatic rollback:**
+Every deploy tags the image with both `:latest` and `:<commit-sha>`. The pipeline blocks on health checks for all four VMs before promoting the image to `:latest-stable`. If any VM fails its health check within 60 seconds, that VM is rolled back to `:latest-stable` — the last confirmed-healthy build. The `:latest-stable` tag is never pushed speculatively, so rollback is always available.
+
 See [`.github/workflows/README.md`](.github/workflows/README.md) for a detailed breakdown of every step.
+
+---
+
+## Monitoring
+
+Prometheus scrapes metrics from the app every 15 seconds. Grafana visualises them.
+
+| Environment | Prometheus | Grafana |
+|---|---|---|
+| Local | `http://localhost:9090` | `http://localhost:3001` |
+| Production | internal only | `http://<nginx-public-ip>/grafana/` — IP is the value of the `SSH_HOST_NGINX` secret, set by `azure-setup.sh` |
+
+Metrics exposed at `/metrics`:
+
+| Metric | Type | What it tracks |
+|---|---|---|
+| `http_requests_total` | Counter | Request volume per endpoint and status code |
+| `http_request_duration_seconds` | Histogram | Request latency per endpoint |
+| `db_query_duration_seconds` | Histogram | Database operation performance per query type |
+
+System metrics (CPU, memory, disk, network) are collected from all VMs via `node_exporter` running on port 9100.
+
+### Grafana Alerting
+
+Alert rules are not provisioned automatically — they must be configured manually in the Grafana UI after the first deployment. To satisfy the SLA, configure the following alerts:
+
+| Alert | Condition | Purpose |
+|---|---|---|
+| App down | `up{job="ultimate-bravery-cookbook"} == 0` for > 1 min | Detect app or VM outage |
+| High latency | `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2` | Detect SLA breach (2 s response time) |
+| High error rate | `rate(http_requests_total{status=~"5.."}[5m]) > 0.05` | Detect elevated 5xx errors |
+| Node down | `up{job="node_exporter"} == 0` for > 1 min | Detect VM-level failure |
+
+Set the **evaluation interval** to 1 minute and configure a **contact point** (e-mail or webhook) under Grafana → Alerting → Contact points so that notifications are delivered within the 30-minute detection window defined in the SLA.
+
+---
+
+## Service Level Agreement
+
+| Goal | Value |
+|---|---|
+| Uptime | ≥ 99% (max. ~7 hours downtime over 30 days) |
+| Max. response time | 2 seconds for all endpoints under normal load |
+| Downtime detection | Within 30 minutes via Grafana alerting |
+
+Response time is measured via `http_request_duration_seconds` in Grafana. In case of unplanned downtime, the target is to detect and respond within 30 minutes.
 
 ---
 
@@ -189,9 +302,13 @@ go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 go install github.com/evilmartians/lefthook@latest
 ```
 
-If the commands are not found after installing, ensure `%GOPATH%\bin` is on your `PATH`. Run `go env GOPATH` in PowerShell to find the path.
+If the commands are not found after installing, add the Go binary directory to your `PATH`:
+- **Windows:** Add `%GOPATH%\bin` to your user PATH via **System Properties → Environment Variables** (run `go env GOPATH` to find the path)
+- **macOS / Linux:** Add `export PATH="$PATH:$(go env GOPATH)/bin"` to `~/.zshrc` or `~/.bashrc`, then restart your terminal
 
 ### Activate Hooks (run once per clone)
+
+Run from the **repository root**:
 
 ```bash
 lefthook install
@@ -232,14 +349,14 @@ Only use this for WIP commits on a personal branch. All code must pass checks be
 ## Definition of Done
 
 ### 1. Code Quality & Standards
-- **Peer Reviewed:** At least one peer has reviewed and approved the Pull Request on important changes.
+- **Peer Reviewed:** At least one peer has reviewed and approved the Pull Request (PR) on important changes.
 - **Linting & Style:** Code passes all static analysis and linting checks with zero critical warnings.
 - **No Technical Debt:** No temporary workarounds or "TODO" comments are introduced unless tracked in the backlog.
 
 ### 2. Testing Automation
-- **Unit Tests:** Minimum test coverage threshold is met (≥80%), and all tests pass.
+- **Unit Tests:** Minimum test coverage threshold is met (80%+), and all tests pass.
 - **Integration Tests:** API endpoints and component interactions are validated automatically in the pipeline.
-- **Security Scanning (DevSecOps):** SAST and dependency vulnerability scans run with zero "High" or "Critical" vulnerabilities.
+- **Security Scanning (DevSecOps):** Static Application Security Testing (SAST) and dependency vulnerability scans run with zero "High" or "Critical" vulnerabilities.
 
 ### 3. Continuous Integration & Deployment (CI/CD)
 - **Green Build:** The CI pipeline builds the artifact/container successfully without manual intervention.
@@ -247,9 +364,7 @@ Only use this for WIP commits on a personal branch. All code must pass checks be
 - **Environment Parity:** The deployment uses the exact same configuration templates and scripts that will be used for production.
 
 ### 4. Observability & Operations
-- **Telemetry:** Logging and metrics are implemented. Prometheus metrics exposed at `/metrics`, visualised in Grafana.
+- **Telemetry:** Logging, metrics, and distributed tracing are implemented following architectural standards.
 
 ### 5. Product & Compliance
-- **Acceptance Criteria:** The feature fulfils all acceptance criteria defined in the user story / issue.
-- **Documentation:** User-facing documentation, API specs (Swagger/OpenAPI), and internal architecture are updated.
-- **Feature Flags:** Not applicable at this project scale.
+- **Documentation:** User-facing documentation, API specs (e.g., Swagger/OpenAPI), and internal architecture diagrams are updated.

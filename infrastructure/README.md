@@ -1,14 +1,18 @@
 # Infrastructure
 
+![Azure Architecture](../docs/azure-architecture.png)
+
 ## Prerequisites
+
+> **Windows:** These are bash scripts. Run them in **WSL** or **Git Bash** — not PowerShell or Command Prompt.
 
 | Tool | Purpose | Install |
 |---|---|---|
-| [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) | Create VMs | `winget install Microsoft.AzureCLI` |
+| [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) | Create VMs | Windows: `winget install Microsoft.AzureCLI`<br>macOS: `brew install azure-cli`<br>Linux (Ubuntu/Debian): `curl -sL https://aka.ms/InstallAzureCLIDeb &#124; sudo bash`<br>Other Linux: [install guide](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli-linux) |
 | Azure subscription | Quota for 1 Standard public IP | Azure for Students works |
-| `openssl` | Generate DB/Grafana passwords | Included on WSL/macOS/Linux |
+| `openssl` | Generate DB/Grafana passwords | Pre-installed on macOS/Linux; included in Git Bash / WSL on Windows |
 | SSH key at `~/.ssh/azure_key` | VM auth | Auto-generated if missing |
-| [GitHub CLI](https://cli.github.com/) (optional) | Set secrets automatically | `winget install GitHub.cli` then `gh auth login` |
+| [GitHub CLI](https://cli.github.com/) (optional) | Set secrets automatically | Windows: `winget install GitHub.cli`<br>macOS: `brew install gh`<br>Linux (Ubuntu/Debian): `sudo apt install gh`<br>Other Linux: [install guide](https://cli.github.com/)<br>Then run `gh auth login` |
 
 ## What `azure-setup.sh` does
 
@@ -27,13 +31,33 @@ Run once to provision infrastructure and perform the initial container deploymen
 7. Runs a quick end-to-end check (postgres, backend HTTP, nginx public IP)
 8. Sets GitHub Actions secrets via `gh secret set` (or prints them for manual entry)
 
-GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_APP`, `SSH_HOST_POSTGRES`, `SSH_HOST_MONITORING`, `SSH_PROXY_HOST`, `AZURE_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
+GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_NGINX_PRIVATE`, `SSH_HOST_APP`, `SSH_HOST_POSTGRES`, `SSH_HOST_MONITORING`, `SSH_PROXY_HOST`, `AZURE_KEY`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GRAFANA_PASSWORD`
 
 ## What `azure-teardown.sh` does
 
 Deletes all resources in `recipe-cookbook-backup` in order: VMs → NICs → disks (background, `--no-wait`) → NSGs → VNet. Non-interactive — no confirmation prompt.
 
+## Azure Region
+
+The setup script auto-detects which region to use — you do not need to configure anything manually beforehand. When it runs, it checks your account against a list of preferred European regions (`norwayeast`, `swedencentral`, `northeurope`, `westeurope`) and handles it as follows:
+
+| Scenario | What happens |
+|---|---|
+| Exactly one preferred region is available | Auto-selected — no prompt |
+| Multiple preferred regions are available | Script shows a numbered list, you pick one |
+| None of the preferred regions are available | Script prints **all** regions available on your account and prompts you to type one |
+
+The third case is the most common when using accounts with restricted quotas (e.g. enterprise accounts with policy restrictions, or Azure for Students accounts where some regions are blocked). To check your available regions ahead of time, run this after `az login`:
+
+```bash
+az account list-locations --query "[].{Name:name, DisplayName:displayName}" --output table
+```
+
+Pick any region from the `Name` column where you have quota for 4 × `Standard_B1s` VMs and 1 Standard public IP. `Standard_B1s` is a small general-purpose VM available in virtually all regions — if a region appears in the list, it will almost certainly work.
+
 ## Usage
+
+The full setup takes **20–40 minutes** on a standard connection (VM provisioning ~5 min per VM, Docker installation and container startup account for the rest).
 
 ```bash
 # Provision everything

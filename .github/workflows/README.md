@@ -1,5 +1,7 @@
 # CI/CD Pipeline
 
+![CI/CD Pipeline](../../docs/cicd-pipeline.png)
+
 Two workflow files run automatically on every push.
 
 ---
@@ -12,7 +14,7 @@ Runs on every push to any branch and on every pull request.
 |---|---|---|
 | Static analysis | `go vet` | Catches common Go bugs (misused format strings, unreachable code, etc.) |
 | Tests + race detector | `go test -race` | Runs all unit tests and detects data races |
-| Coverage threshold | `go tool cover` | Fails if total test coverage drops below 30% |
+| Coverage threshold | `go tool cover` | Fails if total test coverage drops below 80% |
 | Vulnerability scan | `govulncheck` | Checks Go dependencies against the Go vulnerability database |
 | Dockerfile lint | `hadolint` | Enforces Dockerfile best practices |
 
@@ -49,7 +51,7 @@ Deploys to four VMs in parallel using a matrix — one per service:
 
 For each VM:
 1. Copies the service's `docker-compose.yaml` to `~/legacyProject/<service>/` via SCP. The monitoring VM also receives `prometheus.yml`.
-2. Writes `~/legacyProject/<service>/.env` from the service-specific `ENV_FILE_*` secret — never echoed to logs.
+2. Assembles `~/legacyProject/<service>/.env` from individual secrets (`DB_HOST`, `DB_USER`, `DB_PASSWORD`, etc.) using `printf` — never echoed to logs.
 3. Pulls the new image and runs `docker compose up --wait`, blocking until all healthchecks pass within 60 seconds.
 4. On failure, rolls back to `:<image>:latest-stable` (the last confirmed-healthy image) for services with a custom image.
 
@@ -82,6 +84,7 @@ Runs once after all four VMs are confirmed healthy.
 | `DB_NAME` | Database name (also used as `POSTGRES_DB`) |
 | `GRAFANA_PASSWORD` | Grafana admin password (`GF_SECURITY_ADMIN_PASSWORD`) |
 | `APP_PRIVATE_IP` | Private IP of the app VM — written as `APP_HOST` in the nginx `.env` |
+| `SSH_HOST_NGINX_PRIVATE` | Private IP of the nginx VM — used to render `prometheus.yml` scrape targets before copying to the monitoring VM |
 | `DISCORD_WEBHOOK_URL` | Deploy notifications (optional) |
 
 ---

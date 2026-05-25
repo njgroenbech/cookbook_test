@@ -161,9 +161,9 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 
 | # | Item | Type | Status |
 |---|------|------|--------|
-| 13.1 | Deployment strategy chosen and documented (blue-green / canary / rolling) | MANDATORY | ⚠️ Documented in report. Needs to be explained in README as well. |
+| 13.1 | Deployment strategy chosen and documented (blue-green / canary / rolling) | MANDATORY | ✅ Documented in README under CI/CD (immutable rolling with automatic rollback and health-check gating) |
 | 13.2 | Scaling and optimal deployment strategy discussed | MANDATORY | ❌ Not documented in repo |
-| 13.3 | SLA (Service Level Agreement) written and published | MANDATORY | ⚠️ In report, not in README. |
+| 13.3 | SLA (Service Level Agreement) written and published | MANDATORY | ✅ Documented in README under Service Level Agreement |
 | 13.4 | Definition of done documented | MANDATORY | ✅ Documented in README |
 | 13.5 | Downtime / fault tolerance testing | OPTIONAL | ❌ Not done |
 
@@ -182,6 +182,5 @@ plus `exam_project_requirements.md` and `semester_overview.md`.
 ## Gap Summary — Prioritised Backlog
 
 ### Medium priority (needs verification or small fixes)
-4. **⚠️ 13.1/13.2 — Deployment strategy**: document the chosen strategy (rolling update via Docker Compose `--wait`), its trade-offs, and scaling considerations
-5. **⚠️ 13.3 — SLA**: write a simple SLA (uptime target, response time goal, RTO)
-11. **⚠️ 2.7 — groups.py**: verify group entry is filled out in the course repository
+4. **❌ 13.2 — Scaling and optimal deployment strategy**: discuss trade-offs of the current single-instance setup and what a scaled alternative would look like
+5. **⚠️ 2.7 — groups.py**: verify group entry is filled out in the course repository
