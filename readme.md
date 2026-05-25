@@ -75,6 +75,8 @@ bash infrastructure/azure-setup.sh
 
 `azure-setup.sh` takes **20–40 minutes** and handles everything: VMs, networking, Docker, secrets, and the initial deployment. When it finishes it prints the public IP and SSH access commands.
 
+> **Azure region:** The script auto-detects which region to use based on what is available on your account. If none of the preferred European regions are available (common on restricted accounts), it will print all available regions and ask you to pick one. See [infrastructure/README.md](infrastructure/README.md#azure-region) for details and a command to check your available regions ahead of time.
+
 From this point, every push to `master` on your fork triggers the full CI/CD pipeline and redeploys automatically.
 
 **To tear everything down:**

@@ -37,6 +37,24 @@ GitHub secrets written: `VM_USER`, `SSH_HOST_NGINX`, `SSH_HOST_NGINX_PRIVATE`, `
 
 Deletes all resources in `recipe-cookbook-backup` in order: VMs → NICs → disks (background, `--no-wait`) → NSGs → VNet. Non-interactive — no confirmation prompt.
 
+## Azure Region
+
+The setup script auto-detects which region to use — you do not need to configure anything manually beforehand. When it runs, it checks your account against a list of preferred European regions (`norwayeast`, `swedencentral`, `northeurope`, `westeurope`) and handles it as follows:
+
+| Scenario | What happens |
+|---|---|
+| Exactly one preferred region is available | Auto-selected — no prompt |
+| Multiple preferred regions are available | Script shows a numbered list, you pick one |
+| None of the preferred regions are available | Script prints **all** regions available on your account and prompts you to type one |
+
+The third case is the most common when using accounts with restricted quotas (e.g. enterprise accounts with policy restrictions, or Azure for Students accounts where some regions are blocked). To check your available regions ahead of time, run this after `az login`:
+
+```bash
+az account list-locations --query "[].{Name:name, DisplayName:displayName}" --output table
+```
+
+Pick any region from the `Name` column where you have quota for 4 × `Standard_B1s` VMs and 1 Standard public IP. `Standard_B1s` is a small general-purpose VM available in virtually all regions — if a region appears in the list, it will almost certainly work.
+
 ## Usage
 
 The full setup takes **20–40 minutes** on a standard connection (VM provisioning ~5 min per VM, Docker installation and container startup account for the rest).
